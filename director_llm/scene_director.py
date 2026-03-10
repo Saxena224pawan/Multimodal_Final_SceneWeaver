@@ -17,11 +17,28 @@ class SceneWindow:
 
 
 @dataclass
+class ShotPlan:
+    shot_type: str
+    camera_angle: str
+    camera_motion: str
+    subject_blocking: str
+    continuity_anchor: str
+    action: str
+
+
+@dataclass
+class PromptBundle:
+    prompt_text: str
+    shot_plan: ShotPlan
+
+
+@dataclass
 class SceneDirectorConfig:
     model_id: Optional[str] = None
     temperature: float = 0.7
     max_new_tokens: int = 512
     do_sample: bool = False
+    shot_plan_defaults: str = "cinematic"  # cinematic | docu | action
 
 
 class SceneDirector:
@@ -45,12 +62,24 @@ class SceneDirector:
             ) from exc
         self._generator = pipeline("text-generation", model=self.config.model_id)
 
-    def plan_windows(self, storyline: str, total_minutes: float) -> List[SceneWindow]:
+    def plan_windows(
+        self,
+        storyline: str,
+        total_minutes: float,
+        beats_override: Optional[List[Any]] = None,
+    ) -> List[SceneWindow]:
         window_count = max(1, math.ceil((total_minutes * 60) / self.window_seconds))
 
-        beats = self._extract_story_beats(storyline)
-        if not beats:
-            beats = [storyline.strip() or "Continue the story naturally."]
+        beats: List[str]
+        if beats_override:
+            beats = self._normalize_beats_override(beats_override)
+            if not beats:
+                raise ValueError("window_plan_json produced no usable beats")
+            window_count = len(beats)
+        else:
+            beats = self._extract_story_beats(storyline)
+            if not beats:
+                beats = [storyline.strip() or "Continue the story naturally."]
 
         beat_plan = self._expand_beats_for_windows(beats, window_count)
         windows: List[SceneWindow] = []
@@ -76,7 +105,7 @@ class SceneDirector:
         window: SceneWindow,
         previous_prompt: str,
         memory_feedback: Optional[Dict[str, Any]],
-    ) -> str:
+    ) -> PromptBundle:
         if self._generator is None:
             return self._heuristic_refine_prompt(window, previous_prompt, memory_feedback)
 
@@ -116,10 +145,16 @@ class SceneDirector:
 
         parsed = self._extract_json_object(out)
         if parsed:
-            structured = self._compose_structured_prompt(parsed, window)
-            cleaned = self._normalize_prompt(structured)
-            if cleaned:
-                return cleaned
+            shot_plan = self._to_shot_plan(parsed, window)
+            prompt_text = self._prompt_from_shot_plan(
+                shot_plan,
+                window,
+                continuity_note=self._continuity_note(memory_feedback),
+                previous_context=self._previous_context(previous_prompt),
+            )
+            cleaned = self._normalize_prompt(prompt_text)
+            return PromptBundle(prompt_text=cleaned, shot_plan=shot_plan)
+
         return self._heuristic_refine_prompt(window, previous_prompt, memory_feedback)
 
     @staticmethod
@@ -170,62 +205,30 @@ class SceneDirector:
             )
         return f"Continue naturally from previous clip with motion continuity, story action: {beat}"
 
-    @staticmethod
     def _heuristic_refine_prompt(
+        self,
         window: SceneWindow,
         previous_prompt: str,
         memory_feedback: Optional[Dict[str, Any]],
-    ) -> str:
-        continuity = "maintain continuity with previous clip"
-        if memory_feedback:
-            note = memory_feedback.get("suggested_constraints")
-            if isinstance(note, str) and note.strip():
-                continuity = note.strip()
-        previous_context = ""
-        if previous_prompt:
-            compact_prev = previous_prompt.split(" Previous visual context:")[0].strip()
-            compact_prev = compact_prev[:240]
-            previous_context = f" Previous visual context: {compact_prev}"
-        shot_type, camera_angle, camera_motion = SceneDirector._default_shot_plan(window.index)
-        base = (
-            f"{window.prompt_seed}. Shot type: {shot_type}. Camera angle: {camera_angle}. "
-            f"Camera motion: {camera_motion}. Time window {window.start_sec}-{window.end_sec}s, "
-            f"{continuity}.{previous_context}"
+    ) -> PromptBundle:
+        continuity_note = self._continuity_note(memory_feedback)
+        previous_context = self._previous_context(previous_prompt)
+        shot_type, camera_angle, camera_motion = self._default_shot_plan(window.index)
+        shot_plan = ShotPlan(
+            shot_type=shot_type,
+            camera_angle=camera_angle,
+            camera_motion=camera_motion,
+            subject_blocking="keep main subjects consistent and centered",
+            continuity_anchor="preserve location layout, lighting, and key objects",
+            action=window.beat,
         )
-        return SceneDirector._normalize_prompt(base)
-
-    @staticmethod
-    def _default_shot_plan(index: int) -> tuple[str, str, str]:
-        plans = [
-            ("wide establishing", "eye-level", "slow dolly-in"),
-            ("medium two-shot", "eye-level", "gentle tracking"),
-            ("close-up action", "slightly low", "subtle handheld"),
-            ("medium profile", "eye-level", "locked-off"),
-        ]
-        return plans[index % len(plans)]
-
-    @staticmethod
-    def _compose_structured_prompt(parsed: Dict[str, Any], window: SceneWindow) -> str:
-        def _field(name: str, fallback: str) -> str:
-            value = parsed.get(name)
-            if isinstance(value, str):
-                cleaned = " ".join(value.split()).strip()
-                if cleaned:
-                    return cleaned
-            return fallback
-
-        shot_type, camera_angle, camera_motion = SceneDirector._default_shot_plan(window.index)
-        shot_type = _field("shot_type", shot_type)
-        camera_angle = _field("camera_angle", camera_angle)
-        camera_motion = _field("camera_motion", camera_motion)
-        subject_blocking = _field("subject_blocking", "keep main subjects centered and consistent")
-        action = _field("action", window.beat)
-        continuity_anchor = _field("continuity_anchor", "preserve previous location layout and lighting")
-        return (
-            f"Shot type: {shot_type}. Camera angle: {camera_angle}. Camera motion: {camera_motion}. "
-            f"Subject blocking: {subject_blocking}. Action: {action}. "
-            f"Continuity anchor: {continuity_anchor}."
+        prompt_text = SceneDirector._prompt_from_shot_plan(
+            shot_plan,
+            window,
+            continuity_note=continuity_note,
+            previous_context=previous_context,
         )
+        return PromptBundle(prompt_text=prompt_text, shot_plan=shot_plan)
 
     @staticmethod
     def _normalize_prompt(text: str) -> str:
@@ -238,6 +241,98 @@ class SceneDirector:
             return ""
         cleaned = text.split(" Previous visual context:")[0].strip()
         return cleaned[:260]
+
+    @staticmethod
+    def _previous_context(previous_prompt: str) -> str:
+        if not previous_prompt:
+            return ""
+        compact_prev = previous_prompt.split(" Previous visual context:")[0].strip()
+        compact_prev = compact_prev[:240]
+        return f" Previous visual context: {compact_prev}" if compact_prev else ""
+
+    @staticmethod
+    def _continuity_note(memory_feedback: Optional[Dict[str, Any]]) -> str:
+        continuity = "maintain continuity with previous clip"
+        if memory_feedback:
+            note = memory_feedback.get("suggested_constraints")
+            if isinstance(note, str) and note.strip():
+                continuity = note.strip()
+        return continuity
+
+    @staticmethod
+    def _normalize_beats_override(beats_override: List[Any]) -> List[str]:
+        beats: List[str] = []
+        for item in beats_override:
+            if isinstance(item, str):
+                cleaned = item.strip()
+                if cleaned:
+                    beats.append(cleaned)
+            elif isinstance(item, dict):
+                beat = str(item.get("beat", "")).strip()
+                if beat:
+                    beats.append(beat)
+        return beats
+
+    def _default_shot_plan(self, index: int) -> tuple[str, str, str]:
+        presets = {
+            "cinematic": [
+                ("wide establishing", "eye-level", "slow dolly-in"),
+                ("medium two-shot", "eye-level", "gentle tracking"),
+                ("close-up action", "slightly low", "subtle handheld"),
+                ("medium profile", "eye-level", "locked-off"),
+            ],
+            "docu": [
+                ("medium docu", "shoulder height", "handheld sway"),
+                ("wide street", "eye-level", "walk-and-talk tracking"),
+                ("tight interview", "eye-level", "locked tripod"),
+                ("cutaway detail", "eye-level", "slow push"),
+            ],
+            "action": [
+                ("wide action", "low angle", "fast dolly"),
+                ("medium chase", "eye-level", "energetic tracking"),
+                ("close impact", "slightly low", "handheld shake"),
+                ("aerial reveal", "high angle", "crane down"),
+            ],
+        }
+        chosen = presets.get(self.config.shot_plan_defaults, presets["cinematic"])
+        return chosen[index % len(chosen)]
+
+    def _to_shot_plan(self, parsed: Dict[str, Any], window: SceneWindow) -> ShotPlan:
+        def _field(name: str, fallback: str) -> str:
+            value = parsed.get(name)
+            if isinstance(value, str):
+                cleaned = " ".join(value.split()).strip()
+                if cleaned:
+                    return cleaned
+            return fallback
+
+        shot_type, camera_angle, camera_motion = self._default_shot_plan(window.index)
+        return ShotPlan(
+            shot_type=_field("shot_type", shot_type),
+            camera_angle=_field("camera_angle", camera_angle),
+            camera_motion=_field("camera_motion", camera_motion),
+            subject_blocking=_field("subject_blocking", "keep main subjects centered and consistent"),
+            continuity_anchor=_field("continuity_anchor", "preserve previous location layout and lighting"),
+            action=_field("action", window.beat),
+        )
+
+    @staticmethod
+    def _prompt_from_shot_plan(
+        shot_plan: ShotPlan,
+        window: SceneWindow,
+        continuity_note: str,
+        previous_context: str,
+    ) -> str:
+        base = (
+            f"Shot type: {shot_plan.shot_type}. "
+            f"Camera angle: {shot_plan.camera_angle}. "
+            f"Camera motion: {shot_plan.camera_motion}. "
+            f"Subject blocking: {shot_plan.subject_blocking}. "
+            f"Action: {shot_plan.action}. "
+            f"Continuity anchor: {shot_plan.continuity_anchor}. "
+            f"Time window {window.start_sec}-{window.end_sec}s, {continuity_note}.{previous_context}"
+        )
+        return SceneDirector._normalize_prompt(base)
 
     @staticmethod
     def _compact_storyline(storyline: str) -> str:

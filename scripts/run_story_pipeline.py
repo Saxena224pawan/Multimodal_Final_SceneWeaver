@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from director_llm import SceneDirector, SceneDirectorConfig
+from director_llm.scene_director import PromptBundle, ShotPlan
 from memory_module import NarrativeMemory, VisionEmbedder, VisionEmbedderConfig
 from memory_module.captioner import Captioner, CaptionerConfig
 from memory_module.window_critic import evaluate_candidate
@@ -65,8 +66,22 @@ def build_generation_prompt(
     scene_change_requested: bool,
     story_state_hint: str,
     repair_hint: str = "",
+    shot_plan: Optional[ShotPlan] = None,
+    shot_plan_enforce: bool = True,
 ) -> str:
     parts = []
+    if shot_plan_enforce and shot_plan is not None:
+        parts.append(
+            " ".join(
+                [
+                    f"Shot type: {shot_plan.shot_type}.",
+                    f"Camera angle: {shot_plan.camera_angle}.",
+                    f"Camera motion: {shot_plan.camera_motion}.",
+                    f"Subject blocking: {shot_plan.subject_blocking}.",
+                    f"Continuity anchor: {shot_plan.continuity_anchor}.",
+                ]
+            )
+        )
     if style_prefix.strip():
         parts.append(style_prefix.strip())
     if character_lock.strip():
@@ -100,6 +115,17 @@ def _compact_previous_prompt(prompt: str) -> str:
         return ""
     head = prompt.split(" Previous visual context:")[0].strip()
     return head[:240]
+
+
+def _load_window_plan(path: str) -> List[Any]:
+    plan_path = Path(path)
+    if not plan_path.is_file():
+        raise FileNotFoundError(f"window_plan_json not found: {plan_path}")
+    with plan_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, list):
+        raise ValueError("window_plan_json must be a JSON array of beats")
+    return data
 
 
 def _cosine_similarity(v1: Optional[Any], v2: Optional[Any]) -> Optional[float]:
@@ -231,9 +257,28 @@ def main() -> None:
     parser.add_argument("--output_dir", type=str, default="outputs/story_run", help="Run output directory.")
     parser.add_argument("--total_minutes", type=float, default=0.5, help="Target video length in minutes.")
     parser.add_argument("--window_seconds", type=int, default=10, help="Seconds per clip window.")
+    parser.add_argument(
+        "--window_plan_json",
+        type=str,
+        default="",
+        help="Optional JSON file with preauthored beat list (array of strings or objects with 'beat').",
+    )
 
     parser.add_argument("--director_model_id", type=str, default="", help="Optional HF LLM id for director.")
     parser.add_argument("--director_temperature", type=float, default=0.7, help="Director LLM temperature.")
+    parser.add_argument(
+        "--shot_plan_enforce",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Whether to always include shot metadata in prompts (default: on).",
+    )
+    parser.add_argument(
+        "--shot_plan_defaults",
+        type=str,
+        default="cinematic",
+        choices=["cinematic", "docu", "action"],
+        help="Preset sequence for fallback shot plans when director JSON is absent.",
+    )
 
     parser.add_argument("--video_model_id", type=str, default="Wan-AI/Wan2.0-T2V-14B", help="Wan model id.")
     parser.add_argument("--dtype", type=str, default="bfloat16", choices=["float16", "float32", "bfloat16"])
@@ -396,11 +441,17 @@ def main() -> None:
         SceneDirectorConfig(
             model_id=args.director_model_id or None,
             temperature=args.director_temperature,
+            shot_plan_defaults=args.shot_plan_defaults,
         ),
         window_seconds=args.window_seconds,
     )
     director.load()
-    windows = director.plan_windows(storyline=args.storyline, total_minutes=args.total_minutes)
+    beats_override = _load_window_plan(args.window_plan_json) if args.window_plan_json else None
+    windows = director.plan_windows(
+        storyline=args.storyline,
+        total_minutes=args.total_minutes,
+        beats_override=beats_override,
+    )
 
     backbone = None
     if not args.dry_run:
@@ -465,12 +516,14 @@ def main() -> None:
             next_negative_prompt = args.negative_prompt
         scene_change_requested = _beat_requests_scene_change(window.beat)
         story_state_hint = _build_story_state_hint(windows, window_pos)
-        refined_prompt = director.refine_prompt(
+        bundle: PromptBundle = director.refine_prompt(
             storyline=args.storyline,
             window=window,
             previous_prompt=previous_prompt,
             memory_feedback=memory_feedback.to_dict() if memory_feedback else None,
         )
+        refined_prompt = bundle.prompt_text
+        current_shot_plan = bundle.shot_plan
         generation_prompt = build_generation_prompt(
             refined_prompt=refined_prompt,
             beat=window.beat,
@@ -480,6 +533,8 @@ def main() -> None:
             scene_change_requested=scene_change_requested,
             story_state_hint=story_state_hint,
             repair_hint="",
+            shot_plan=current_shot_plan,
+            shot_plan_enforce=args.shot_plan_enforce,
         )
 
         clip_path = clips_dir / f"window_{window.index:03d}.mp4"
@@ -489,6 +544,7 @@ def main() -> None:
             "beat": window.beat,
             "prompt_seed": window.prompt_seed,
             "refined_prompt": refined_prompt,
+            "shot_plan": current_shot_plan.__dict__,
             "generation_prompt": generation_prompt,
             "scene_change_requested": scene_change_requested,
             "environment_anchor": previous_environment_anchor,
@@ -532,6 +588,7 @@ def main() -> None:
             else:
                 previous_beat = windows[window_pos - 1].beat if window_pos > 0 else ""
             repair_hint = ""
+            planned_shot_plan = current_shot_plan
             for attempt_idx in range(max_attempts):
                 generation_prompt = build_generation_prompt(
                     refined_prompt=refined_prompt,
@@ -542,6 +599,8 @@ def main() -> None:
                     scene_change_requested=scene_change_requested,
                     story_state_hint=story_state_hint,
                     repair_hint=repair_hint,
+                    shot_plan=current_shot_plan,
+                    shot_plan_enforce=args.shot_plan_enforce,
                 )
 
                 best_attempt: Optional[Dict[str, Any]] = None
@@ -601,6 +660,7 @@ def main() -> None:
                         "critic_score": critic.final_score,
                         "critic_story_progress_score": critic.story_progress_score,
                         "critic_feedback": critic.feedback,
+                        "shot_plan": current_shot_plan.__dict__,
                     }
                     candidate_rows.append(candidate_entry)
 
@@ -628,14 +688,24 @@ def main() -> None:
                     selected = best_attempt
                     break
                 repair_hint = best_attempt["critic_feedback"]
-                refined_prompt = director.refine_prompt(
+                combined_constraints = repair_hint
+                if memory_feedback and memory_feedback.suggested_constraints:
+                    combined_constraints = f"{combined_constraints} {memory_feedback.suggested_constraints}".strip()
+                bundle = director.refine_prompt(
                     storyline=args.storyline,
                     window=window,
                     previous_prompt=previous_prompt,
                     memory_feedback={
-                        "suggested_constraints": repair_hint,
+                        "suggested_constraints": combined_constraints,
                     },
                 )
+                refined_prompt = bundle.prompt_text
+                current_shot_plan = bundle.shot_plan
+                if planned_shot_plan and (
+                    planned_shot_plan.shot_type != current_shot_plan.shot_type
+                    or planned_shot_plan.camera_angle != current_shot_plan.camera_angle
+                ):
+                    repair_hint = f"{repair_hint} Keep shot type '{planned_shot_plan.shot_type}' and camera angle '{planned_shot_plan.camera_angle}' consistent.".strip()
 
             selected = selected or best_overall
             if selected is None:
@@ -656,6 +726,7 @@ def main() -> None:
             row["selected_attempt_index"] = selected["attempt_index"]
             row["continuity_min_score"] = args.continuity_min_score
             row["continuity_regen_attempts"] = max_attempts
+            row["shot_plan"] = current_shot_plan.__dict__
             if len(candidate_rows) > 1:
                 row["candidate_scores"] = candidate_rows
 
@@ -734,6 +805,9 @@ def main() -> None:
         "window_shard_index": args.window_shard_index,
         "parallel_window_mode": args.parallel_window_mode,
         "selected_windows": len(selected_windows),
+        "shot_plan_enforce": args.shot_plan_enforce,
+        "shot_plan_defaults": args.shot_plan_defaults,
+        "window_plan_json": args.window_plan_json or None,
         "output_dir": out_dir.as_posix(),
         "run_log": log_path.as_posix(),
         "captioner_model_id": args.captioner_model_id or None,

@@ -128,6 +128,11 @@ NEG_EOF
 )"
 fi
 
+# Shot planning defaults
+SHOT_PLAN_ENFORCE="${SHOT_PLAN_ENFORCE:-1}"
+SHOT_PLAN_DEFAULTS="${SHOT_PLAN_DEFAULTS:-cinematic}"
+WINDOW_PLAN_JSON="${WINDOW_PLAN_JSON:-}"
+
 CAPTIONER_MODEL_ID="${CAPTIONER_MODEL_ID:-}"
 CAPTIONER_DEVICE="${CAPTIONER_DEVICE:-cpu}"
 CAPTIONER_STUB_FALLBACK="${CAPTIONER_STUB_FALLBACK:-1}"
@@ -386,6 +391,19 @@ fi
 if supports_flag "--window_shard_index"; then
   CMD+=(--window_shard_index "${WINDOW_SHARD_INDEX}")
 fi
+if supports_flag "--shot_plan_defaults"; then
+  CMD+=(--shot_plan_defaults "${SHOT_PLAN_DEFAULTS}")
+fi
+if supports_flag "--shot_plan_enforce"; then
+  if [ "${SHOT_PLAN_ENFORCE}" = "1" ]; then
+    CMD+=(--shot_plan_enforce)
+  else
+    CMD+=(--no-shot_plan_enforce)
+  fi
+fi
+if supports_flag "--window_plan_json" && [ -n "${WINDOW_PLAN_JSON}" ]; then
+  CMD+=(--window_plan_json "${WINDOW_PLAN_JSON}")
+fi
 if supports_flag "--parallel_window_mode"; then
   if [ "${PARALLEL_WINDOW_MODE}" = "1" ]; then
     CMD+=(--parallel_window_mode)
@@ -418,6 +436,9 @@ echo "SEED=${SEED}"
 echo "SEED_STRATEGY=${SEED_STRATEGY}"
 echo "DIRECTOR_TEMPERATURE=${DIRECTOR_TEMPERATURE}"
 echo "EMBEDDING_BACKEND=${EMBEDDING_BACKEND}"
+echo "SHOT_PLAN_ENFORCE=${SHOT_PLAN_ENFORCE}"
+echo "SHOT_PLAN_DEFAULTS=${SHOT_PLAN_DEFAULTS}"
+echo "WINDOW_PLAN_JSON=${WINDOW_PLAN_JSON}"
 echo "EMBEDDING_MODEL_ID=${EMBEDDING_MODEL_ID}"
 echo "LAST_FRAME_MEMORY=${LAST_FRAME_MEMORY}"
 echo "CONTINUITY_CANDIDATES=${CONTINUITY_CANDIDATES}"
