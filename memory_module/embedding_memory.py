@@ -289,9 +289,15 @@ class NarrativeMemory:
     Tracks local (previous clip) and global (running) embeddings.
     """
 
-    def __init__(self, local_threshold: float = 0.25, global_threshold: float = 0.20):
+    def __init__(
+        self,
+        local_threshold: float = 0.25,
+        global_threshold: float = 0.20,
+        transition_threshold: float = 0.45,
+    ):
         self.local_threshold = local_threshold
         self.global_threshold = global_threshold
+        self.transition_threshold = transition_threshold
         self.local_embedding = None
         self.global_embedding = None
         self.window_count = 0
@@ -315,7 +321,7 @@ class NarrativeMemory:
         if global_sim is not None and global_sim < self.global_threshold:
             drift_detected = True
             notes.append("Reconnect with core storyline entities, setting, and mood from earlier windows.")
-        if transition_similarity is not None and transition_similarity < 0.70:
+        if transition_similarity is not None and transition_similarity < self.transition_threshold:
             drift_detected = True
             notes.append("Match next clip opening frame to the previous final frame composition and subject pose.")
         if not notes:

@@ -93,14 +93,22 @@ class WanBackbone:
             ) from exc
         try:
             from diffusers import AutoPipelineForText2Video as PipelineClass
-        except ImportError:
+        except Exception:
             try:
                 # Fallback for diffusers builds that do not expose AutoPipelineForText2Video.
                 from diffusers import DiffusionPipeline as PipelineClass
-            except ImportError as exc:
+            except Exception as exc:
+                detail = str(exc)
+                xformers_hint = ""
+                if "xformers" in detail.lower() or "jitcallable._set_src" in detail.lower():
+                    xformers_hint = (
+                        " Detected an xformers runtime mismatch. "
+                        "Uninstall xformers or install a build matching this torch/cuda runtime."
+                    )
                 raise ImportError(
                     "Could not import a usable diffusers pipeline class. "
                     "Expected AutoPipelineForText2Video or DiffusionPipeline."
+                    f"{xformers_hint}"
                 ) from exc
 
         cuda_available = torch.cuda.is_available()

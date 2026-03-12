@@ -49,25 +49,31 @@ class SceneDirector:
     def __init__(self, config: SceneDirectorConfig, window_seconds: int = 10):
         self.config = config
         self.window_seconds = window_seconds
-        self._generator = None
+        self._tokenizer = None
+        self._model = None
+        self._torch = None
 
     def load(self) -> None:
         if not self.config.model_id:
             return
         try:
-            from transformers import pipeline
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
         except ImportError as exc:
             raise ImportError(
                 "transformers is required to run SceneDirector with --director_model_id."
             ) from exc
-        self._generator = pipeline("text-generation", model=self.config.model_id)
+        self._torch = torch
+        self._tokenizer = AutoTokenizer.from_pretrained(self.config.model_id)
+        if self._tokenizer.pad_token_id is None and self._tokenizer.eos_token_id is not None:
+            self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
 
-    def plan_windows(
-        self,
-        storyline: str,
-        total_minutes: float,
-        beats_override: Optional[List[Any]] = None,
-    ) -> List[SceneWindow]:
+        self._model = AutoModelForCausalLM.from_pretrained(self.config.model_id)
+        if torch.cuda.is_available():
+            self._model.to("cuda")
+        self._model.eval()
+
+    def plan_windows(self, storyline: str, total_minutes: float) -> List[SceneWindow]:
         window_count = max(1, math.ceil((total_minutes * 60) / self.window_seconds))
 
         beats: List[str]
@@ -105,8 +111,8 @@ class SceneDirector:
         window: SceneWindow,
         previous_prompt: str,
         memory_feedback: Optional[Dict[str, Any]],
-    ) -> PromptBundle:
-        if self._generator is None:
+    ) -> str:
+        if self._model is None or self._tokenizer is None or self._torch is None:
             return self._heuristic_refine_prompt(window, previous_prompt, memory_feedback)
 
         compact_prev = self._compact_previous_prompt(previous_prompt)
@@ -138,10 +144,18 @@ class SceneDirector:
         gen_kwargs: Dict[str, Any] = {
             "max_new_tokens": self.config.max_new_tokens,
             "do_sample": self.config.do_sample,
+            "pad_token_id": self._tokenizer.pad_token_id,
         }
         if self.config.do_sample:
             gen_kwargs["temperature"] = self.config.temperature
-        out = self._generator(prompt, **gen_kwargs)[0]["generated_text"]
+
+        tokenized = self._tokenizer(prompt, return_tensors="pt")
+        model_device = next(self._model.parameters()).device
+        tokenized = {k: v.to(model_device) for k, v in tokenized.items()}
+        with self._torch.no_grad():
+            output_ids = self._model.generate(**tokenized, **gen_kwargs)
+        new_token_ids = output_ids[0][tokenized["input_ids"].shape[-1] :]
+        out = self._tokenizer.decode(new_token_ids, skip_special_tokens=True).strip()
 
         parsed = self._extract_json_object(out)
         if parsed:

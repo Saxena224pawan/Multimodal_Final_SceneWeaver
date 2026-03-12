@@ -177,6 +177,8 @@ def _extract_environment_anchor(prompt: str) -> str:
         if not candidate:
             continue
         lower = candidate.lower()
+        if lower.startswith("previous visual context") or lower.startswith("time window"):
+            continue
         if any(token in lower for token in env_keywords):
             selected.append(candidate)
         if len(selected) >= 2:
@@ -267,17 +269,16 @@ def main() -> None:
     parser.add_argument("--director_model_id", type=str, default="", help="Optional HF LLM id for director.")
     parser.add_argument("--director_temperature", type=float, default=0.7, help="Director LLM temperature.")
     parser.add_argument(
-        "--shot_plan_enforce",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Whether to always include shot metadata in prompts (default: on).",
+        "--director_max_new_tokens",
+        type=int,
+        default=160,
+        help="Max new tokens per director refinement call (lower is faster for Qwen).",
     )
     parser.add_argument(
-        "--shot_plan_defaults",
-        type=str,
-        default="cinematic",
-        choices=["cinematic", "docu", "action"],
-        help="Preset sequence for fallback shot plans when director JSON is absent.",
+        "--director_do_sample",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable stochastic sampling in director LLM generation.",
     )
 
     parser.add_argument("--video_model_id", type=str, default="Wan-AI/Wan2.0-T2V-14B", help="Wan model id.")
@@ -339,7 +340,7 @@ def main() -> None:
     parser.add_argument(
         "--continuity_candidates",
         type=int,
-        default=1,
+        default=2,
         help="Candidate clips per window when continuity ranking is enabled (higher is slower).",
     )
     parser.add_argument(
@@ -353,6 +354,12 @@ def main() -> None:
         type=float,
         default=0.65,
         help="Weight for first-frame to previous-last-frame similarity in candidate ranking.",
+    )
+    parser.add_argument(
+        "--transition_floor",
+        type=float,
+        default=0.45,
+        help="Minimum preferred first-frame continuity; candidates below this are deprioritized.",
     )
     parser.add_argument(
         "--environment_weight",
@@ -441,7 +448,8 @@ def main() -> None:
         SceneDirectorConfig(
             model_id=args.director_model_id or None,
             temperature=args.director_temperature,
-            shot_plan_defaults=args.shot_plan_defaults,
+            max_new_tokens=args.director_max_new_tokens,
+            do_sample=bool(args.director_do_sample),
         ),
         window_seconds=args.window_seconds,
     )
@@ -579,6 +587,7 @@ def main() -> None:
             selected: Optional[Dict[str, Any]] = None
 
             transition_weight = max(0.0, float(args.transition_weight))
+            transition_floor = max(-1.0, min(1.0, float(args.transition_floor)))
             environment_weight = max(0.0, float(args.environment_weight))
             if scene_change_requested:
                 scene_change_decay = max(0.0, float(args.scene_change_env_decay))
@@ -787,6 +796,8 @@ def main() -> None:
         "num_windows": len(windows),
         "dry_run": args.dry_run,
         "director_model_id": args.director_model_id or None,
+        "director_max_new_tokens": args.director_max_new_tokens,
+        "director_do_sample": bool(args.director_do_sample),
         "video_model_id": None if args.dry_run else args.video_model_id,
         "embedding_backend": args.embedding_backend,
         "embedding_adapter_ckpt": args.embedding_adapter_ckpt or None,
@@ -794,6 +805,7 @@ def main() -> None:
         "continuity_candidates": args.continuity_candidates,
         "environment_memory": args.environment_memory,
         "transition_weight": args.transition_weight,
+        "transition_floor": args.transition_floor,
         "environment_weight": args.environment_weight,
         "scene_change_env_decay": args.scene_change_env_decay,
         "seed": args.seed,

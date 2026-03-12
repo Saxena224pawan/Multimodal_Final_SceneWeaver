@@ -2,9 +2,9 @@
 #SBATCH --job-name=sceneweaver_full
 #SBATCH --output=slurm_logs/sceneweaver_%j.out
 #SBATCH --error=slurm_logs/sceneweaver_%j.err
-#SBATCH --time=1:50:00
-#SBATCH --partition=a100
-#SBATCH --gres=gpu:a100:2
+#SBATCH --time=6:50:00
+#SBATCH --partition=a40
+#SBATCH --gres=gpu:a40:2
 #SBATCH --cpus-per-task=16
 
 set -euo pipefail
@@ -18,9 +18,10 @@ PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 
 ENV_PATH="${ENV_PATH:-}"
 VENV_PATH="${VENV_PATH:-}"
-DEFAULT_ENV_PATH="${DEFAULT_ENV_PATH:-sceneweaver311}"
+DEFAULT_ENV_PATH="${DEFAULT_ENV_PATH:-sceneweaver_runtime}"
 
-WAN_LOCAL_MODEL="${WAN_LOCAL_MODEL:-${PROJECT_ROOT}/models/Wan2.1-T2V-1.3B-Diffusers}"
+WAN_LOCAL_MODEL="${WAN_LOCAL_MODEL:-/home/vault/v123be/v123be36/Wan2.1-T2V-1.3B-Diffusers}"
+MODEL_STORAGE_ROOT="${MODEL_STORAGE_ROOT:-/home/vault/v123be/v123be36}"
 
 CONDA_SH="${CONDA_SH:-/apps/python/3.12-conda/etc/profile.d/conda.sh}"
 USE_MODULES="${USE_MODULES:-0}"
@@ -38,10 +39,10 @@ MODEL_DIR="${MODEL_DIR:-${PROJECT_ROOT}/models/$(basename "${MODEL_REPO}")}"
 MODEL_INCLUDE="${MODEL_INCLUDE:-*.safetensors *.json *.txt tokenizer* *.model}"
 DOWNLOAD_DIRECTOR_MODEL="${DOWNLOAD_DIRECTOR_MODEL:-0}"
 DIRECTOR_MODEL_REPO="${DIRECTOR_MODEL_REPO:-Qwen/Qwen2.5-3B-Instruct}"
-DIRECTOR_MODEL_DIR="${DIRECTOR_MODEL_DIR:-${PROJECT_ROOT}/models/$(basename "${DIRECTOR_MODEL_REPO}")}"
+DIRECTOR_MODEL_DIR="${DIRECTOR_MODEL_DIR:-${MODEL_STORAGE_ROOT}/$(basename "${DIRECTOR_MODEL_REPO}")}"
 DIRECTOR_MODEL_INCLUDE="${DIRECTOR_MODEL_INCLUDE:-*.safetensors *.json *.txt tokenizer* *.model}"
 
-DINOV2_LOCAL_MODEL="${DINOV2_LOCAL_MODEL:-${PROJECT_ROOT}/models/dinov2-base}"
+DINOV2_LOCAL_MODEL="${DINOV2_LOCAL_MODEL:-${MODEL_STORAGE_ROOT}/dinov2-base}"
 
 # Optional HPC module setup.
 if [ "${USE_MODULES}" = "1" ] && command -v module >/dev/null 2>&1; then
@@ -53,13 +54,8 @@ fi
 mkdir -p "${PROJECT_ROOT}/slurm_logs" "${PROJECT_ROOT}/outputs" "${PROJECT_ROOT}/.hf"
 cd "${PROJECT_ROOT}"
 
-# If an env is already active in the current shell, keep it by default.
-if [ -n "${CONDA_DEFAULT_ENV:-}" ] && [ -z "${ENV_PATH}" ] && [ -z "${VENV_PATH}" ]; then
-  ENV_PATH="${CONDA_DEFAULT_ENV}"
-fi
-
-# Optional default env when neither ENV_PATH nor VENV_PATH is provided.
-if [ -z "${ENV_PATH}" ] && [ -z "${VENV_PATH}" ] && [ -n "${DEFAULT_ENV_PATH}" ]; then
+# Default to lit_eval when neither ENV_PATH nor VENV_PATH is provided.
+if [ -z "${ENV_PATH}" ] && [ -z "${VENV_PATH}" ]; then
   ENV_PATH="${DEFAULT_ENV_PATH}"
 fi
 
@@ -167,6 +163,14 @@ else
   DIRECTOR_MODEL_ID="${DIRECTOR_MODEL_ID:-}"
 fi
 DIRECTOR_TEMPERATURE="${DIRECTOR_TEMPERATURE:-0.05}"
+if [ -z "${DIRECTOR_MAX_NEW_TOKENS:-}" ]; then
+  if echo "${DIRECTOR_MODEL_ID}" | grep -qi "qwen"; then
+    DIRECTOR_MAX_NEW_TOKENS="128"
+  else
+    DIRECTOR_MAX_NEW_TOKENS="160"
+  fi
+fi
+DIRECTOR_DO_SAMPLE="${DIRECTOR_DO_SAMPLE:-0}"
 
 EMBEDDING_BACKEND="${EMBEDDING_BACKEND:-dinov2}"
 EMBEDDING_MODEL_ID="${EMBEDDING_MODEL_ID:-${DINOV2_LOCAL_MODEL}}"
@@ -328,6 +332,7 @@ CMD=("${PYTHON_BIN}" scripts/run_story_pipeline.py
   --window_seconds "${WINDOW_SECONDS}"
   --video_model_id "${VIDEO_MODEL_ID}"
   --director_temperature "${DIRECTOR_TEMPERATURE}"
+  --director_max_new_tokens "${DIRECTOR_MAX_NEW_TOKENS}"
   --embedding_backend "${EMBEDDING_BACKEND}"
   --embedding_model_id "${EMBEDDING_MODEL_ID}"
   --num_frames "${NUM_FRAMES}"
@@ -379,6 +384,9 @@ fi
 if supports_flag "--transition_weight"; then
   CMD+=(--transition_weight "${TRANSITION_WEIGHT}")
 fi
+if supports_flag "--transition_floor" && [ -n "${TRANSITION_FLOOR:-}" ]; then
+  CMD+=(--transition_floor "${TRANSITION_FLOOR}")
+fi
 if supports_flag "--environment_weight"; then
   CMD+=(--environment_weight "${ENVIRONMENT_WEIGHT}")
 fi
@@ -421,6 +429,13 @@ fi
 if [ -n "${DIRECTOR_MODEL_ID}" ]; then
   CMD+=(--director_model_id "${DIRECTOR_MODEL_ID}")
 fi
+if supports_flag "--director_do_sample"; then
+  if [ "${DIRECTOR_DO_SAMPLE}" = "1" ]; then
+    CMD+=(--director_do_sample)
+  else
+    CMD+=(--no-director_do_sample)
+  fi
+fi
 if [ "${DRY_RUN}" = "1" ]; then
   CMD+=(--dry_run)
 fi
@@ -434,7 +449,10 @@ echo "NUM_FRAMES=${NUM_FRAMES}"
 echo "WINDOW_SECONDS=${WINDOW_SECONDS}"
 echo "SEED=${SEED}"
 echo "SEED_STRATEGY=${SEED_STRATEGY}"
+echo "DIRECTOR_MODEL_ID=${DIRECTOR_MODEL_ID}"
 echo "DIRECTOR_TEMPERATURE=${DIRECTOR_TEMPERATURE}"
+echo "DIRECTOR_MAX_NEW_TOKENS=${DIRECTOR_MAX_NEW_TOKENS}"
+echo "DIRECTOR_DO_SAMPLE=${DIRECTOR_DO_SAMPLE}"
 echo "EMBEDDING_BACKEND=${EMBEDDING_BACKEND}"
 echo "SHOT_PLAN_ENFORCE=${SHOT_PLAN_ENFORCE}"
 echo "SHOT_PLAN_DEFAULTS=${SHOT_PLAN_DEFAULTS}"
