@@ -1,0 +1,50 @@
+# Multi-Agent Refinement Engine Configuration
+
+refinement:
+  # Maximum number of iterations per window
+  max_iterations: 3
+
+  # Quality threshold to accept a window (0-1)
+  quality_threshold: 0.70
+
+  # Enable/disable individual agents
+  enable_continuity: true
+  enable_storybeats: true
+  enable_physics: true
+
+  # Agent weights in aggregate scoring
+  agent_weights:
+    continuity: 0.35
+    storybeats: 0.40
+    physics: 0.25
+
+# LLM Configuration for agents
+llm:
+  # Model to use for agent evaluations
+  model_name: "qwen-3b"
+
+  # Temperature for LLM generation
+  temperature: 0.3
+
+# Logging and output
+logging:
+  # Save detailed metadata for each window
+  save_metadata: true
+
+  # Save iteration frames (warning: large file size)
+  save_iteration_frames: false
+
+  # Verbose output
+  verbose: true
+
+  # Log directory
+  log_dir: "logs/multi_agent"
+
+# Evaluation
+evaluation:
+  # Number of frames to sample for captioning
+  caption_sample_count: 5
+
+  # Metrics to compute
+  compute_convergence: true
+  compute_ablations: true
