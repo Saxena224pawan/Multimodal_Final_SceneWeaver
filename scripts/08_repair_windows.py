@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -11,7 +12,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from memory_module import VisionEmbedder, VisionEmbedderConfig
 from memory_module.captioner import Captioner, CaptionerConfig
-from video_backbone import WanBackbone, WanBackboneConfig
+
+
+def load_video_backbone() -> tuple[Any, Any]:
+    from video_backbone import WanBackbone, WanBackboneConfig
+
+    return WanBackbone, WanBackboneConfig
 
 
 def _ensure_dir(path: Path) -> None:
@@ -191,6 +197,7 @@ def main() -> None:
     )
     embedder.load()
 
+    WanBackbone, WanBackboneConfig = load_video_backbone()
     backbone = WanBackbone(
         WanBackboneConfig(
             model_id=video_model_id,

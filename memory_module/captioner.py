@@ -1,137 +1,178 @@
 from __future__ import annotations
 
-import dataclasses
-import re
-from typing import Any, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, List, Sequence, Tuple
 
 
-@dataclasses.dataclass
+@dataclass
 class CaptionerConfig:
-    model_id: str = "Salesforce/blip2-flan-t5-xl"
-    device: str = "cpu"  # auto|cuda|mps|cpu
-    max_new_tokens: int = 60
-    num_beams: int = 1
+    model_id: str
+    device: str = "cpu"
     stub_fallback: bool = True
+    max_new_tokens: int = 32
 
 
 class Captioner:
     """
-    Lightweight wrapper around BLIP-2 style vision-language captioners.
-    Falls back to a stub captioner when model loading is unavailable
-    (useful for tests or CPU-only quick runs).
+    Lightweight captioner wrapper with a reliable stub mode.
+
+    The active pipeline only needs three things from this class:
+    per-frame captions, a compact summary, and a duplicate-subject hint.
     """
 
     def __init__(self, config: CaptionerConfig):
         self.config = config
-        self.processor = None
         self.model = None
-        self.torch = None
-        self._stub = False
+        self.processor = None
+        self._caption_fn = None
+        self.is_stub = False
 
     def load(self) -> None:
         model_id = (self.config.model_id or "").strip()
-        if model_id in {"", "stub", "__stub__"}:
-            self._stub = True
+        if not model_id or model_id == "__stub__":
+            self._enable_stub()
             return
 
         try:
-            import torch
-            from transformers import AutoProcessor, Blip2ForConditionalGeneration
+            from transformers import pipeline
+        except ImportError:
+            if self.config.stub_fallback:
+                self._enable_stub()
+                return
+            raise ImportError("transformers is required to load the configured captioner model.")
+
+        task = "image-to-text"
+        device = self._resolve_pipeline_device(self.config.device)
+        try:
+            self._caption_fn = pipeline(task=task, model=model_id, device=device)
+            self.is_stub = False
         except Exception:
             if self.config.stub_fallback:
-                self._stub = True
+                self._enable_stub()
                 return
             raise
 
-        self.torch = torch
-        device = self._resolve_device(torch)
-        self.processor = AutoProcessor.from_pretrained(model_id)
-        self.model = Blip2ForConditionalGeneration.from_pretrained(
-            model_id, torch_dtype=torch.float16 if device == "cuda" else torch.float32
-        ).to(device)
-        self.model.eval()
+    def caption_frames(self, frames: Sequence[Any], sample_count: int = 4) -> Tuple[List[str], str, bool]:
+        if self._caption_fn is None and not self.is_stub:
+            raise RuntimeError("Captioner not loaded. Call load() first.")
+        frame_list = list(frames)
+        if not frame_list:
+            return [], "", False
 
-    def caption_frames(self, frames: List[Any]) -> Tuple[List[str], str, bool]:
-        """
-        Returns (captions_per_frame, merged_summary, has_duplicate_flag)
-        """
-        sampled = self._sample_frames(frames)
-        if self._stub:
-            captions = [self._stub_caption(i) for i in range(len(sampled))]
+        sampled = self._sample_frames(frame_list, sample_count=sample_count)
+        if self.is_stub:
+            captions = [self._stub_caption(frame, idx) for idx, frame in enumerate(sampled)]
         else:
-            if self.processor is None or self.model is None:
-                raise RuntimeError("Captioner not loaded. Call load() first.")
-            inputs = self.processor(images=sampled, return_tensors="pt").to(self.model.device)
-            with self.torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=self.config.max_new_tokens,
-                    num_beams=self.config.num_beams,
-                )
-            captions = self.processor.batch_decode(outputs, skip_special_tokens=True)
-            captions = [c.strip() for c in captions]
+            captions = [self._model_caption(frame) for frame in sampled]
 
-        merged = self._merge_captions(captions)
-        has_dupe = self._detect_duplicates(merged)
-        return captions, merged, has_dupe
+        if sample_count == 0:
+            expanded = captions
+        else:
+            expanded = self._expand_captions(captions, total_frames=len(frame_list))
+        summary = self._build_summary(expanded)
+        dupes = self._has_duplicate_subjects(summary)
+        return expanded, summary, dupes
 
-    # Helpers -----------------------------------------------------------------
+    def _enable_stub(self) -> None:
+        self._caption_fn = None
+        self.is_stub = True
+
     @staticmethod
-    def _sample_frames(frames: List[Any], count: int = 3) -> List[Any]:
-        if not frames:
-            return []
-        if len(frames) <= count:
+    def _resolve_pipeline_device(device: str) -> int:
+        normalized = (device or "cpu").strip().lower()
+        if normalized in {"cpu", "mps", "auto"}:
+            return -1
+        if normalized == "cuda":
+            return 0
+        return -1
+
+    @staticmethod
+    def _sample_frames(frames: List[Any], sample_count: int) -> List[Any]:
+        if sample_count <= 0 or len(frames) <= sample_count:
             return frames
-        stride = max(1, len(frames) // (count - 1))
-        return [frames[0], frames[len(frames) // 2], frames[-1]][:count]
+        stride = max(1, len(frames) // sample_count)
+        sampled = frames[::stride][:sample_count]
+        return sampled if sampled else [frames[0]]
 
     @staticmethod
-    def _merge_captions(captions: List[str]) -> str:
-        if not captions:
-            return ""
-        # Keep unique nouns-ish words for a compact anchor.
-        tokens = []
-        seen = set()
-        for c in captions:
-            for tok in re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{2,}", c.lower()):
-                if tok in seen:
-                    continue
-                seen.add(tok)
-                tokens.append(tok)
-        summary = " ".join(tokens)
-        return summary[:260] if summary else "scene anchor summary unavailable"
+    def _expand_captions(sampled_captions: List[str], total_frames: int) -> List[str]:
+        if not sampled_captions:
+            return []
+        if len(sampled_captions) >= total_frames:
+            return sampled_captions[:total_frames]
+        expanded: List[str] = []
+        for idx in range(total_frames):
+            source_idx = int(round((idx / max(1, total_frames - 1)) * (len(sampled_captions) - 1)))
+            expanded.append(sampled_captions[source_idx])
+        return expanded
+
+    def _model_caption(self, frame: Any) -> str:
+        result = self._caption_fn(self._to_pil(frame), max_new_tokens=int(self.config.max_new_tokens))
+        if isinstance(result, list) and result:
+            payload = result[0]
+            if isinstance(payload, dict):
+                text = payload.get("generated_text") or payload.get("caption") or ""
+                return " ".join(str(text).split()).strip() or "scene frame"
+        return "scene frame"
+
+    def _stub_caption(self, frame: Any, frame_index: int) -> str:
+        pil = self._to_pil(frame)
+        arr = self._pil_to_array(pil)
+        mean_rgb = arr.mean(axis=(0, 1))
+        brightness = float(mean_rgb.mean()) / 255.0
+        channel = int(mean_rgb.argmax())
+        palette = ("reddish", "greenish", "bluish")
+        light = "bright" if brightness >= 0.55 else "dim"
+        dominant = palette[channel]
+        return f"{light} {dominant} scene frame {frame_index + 1}"
 
     @staticmethod
-    def _detect_duplicates(summary: str) -> bool:
-        text = summary.lower()
-        dupe_patterns = [
-            r"\btwo\b",
-            r"\bthree\b",
-            r"\bmultiple\b",
-            r"\banother\b",
-            r"\bseveral\b",
-            r"\bextra\b",
-            r"\bduplicate\b",
-            r"\bduplicates\b",
-            r"\bclones?\b",
-        ]
-        return any(re.search(p, text) for p in dupe_patterns)
-
-    def _resolve_device(self, torch_module: Any) -> str:
-        device = self.config.device
-        if device == "auto":
-            if torch_module.cuda.is_available():
-                return "cuda"
-            if hasattr(torch_module.backends, "mps") and torch_module.backends.mps.is_available():
-                return "mps"
-            return "cpu"
-        return device
+    def _build_summary(captions: Sequence[str]) -> str:
+        unique: List[str] = []
+        for caption in captions:
+            compact = " ".join((caption or "").split()).strip()
+            if compact and compact not in unique:
+                unique.append(compact)
+            if len(unique) >= 3:
+                break
+        return "; ".join(unique) if unique else "scene continuation"
 
     @staticmethod
-    def _stub_caption(idx: int) -> str:
-        presets = [
-            "a single crow beside a clay pot on a wooden table",
-            "courtyard scene with one crow and scattered pebbles",
-            "one crow near a pot; tree branch and daylight visible",
-        ]
-        return presets[idx % len(presets)]
+    def _has_duplicate_subjects(summary: str) -> bool:
+        lowered = (summary or "").lower()
+        duplicate_markers = (
+            "two ",
+            "multiple ",
+            "duplicate ",
+            "extra person",
+            "extra people",
+            "extra animal",
+            "extra animals",
+            "another crow",
+            "two crows",
+        )
+        return any(marker in lowered for marker in duplicate_markers)
+
+    @staticmethod
+    def _to_pil(frame: Any):
+        from PIL import Image
+        import numpy as np
+
+        if isinstance(frame, Image.Image):
+            return frame.convert("RGB")
+
+        arr = np.asarray(frame)
+        while arr.ndim > 3 and arr.shape[0] == 1:
+            arr = arr[0]
+        if arr.ndim == 3 and arr.shape[0] in (1, 2, 3, 4) and arr.shape[-1] not in (1, 2, 3, 4):
+            arr = np.transpose(arr, (1, 2, 0))
+        if arr.dtype.kind in ("f", "c"):
+            arr = arr.clip(0.0, 1.0) * 255.0
+        arr = arr.clip(0, 255).astype("uint8")
+        return Image.fromarray(arr).convert("RGB")
+
+    @staticmethod
+    def _pil_to_array(image: Any):
+        import numpy as np
+
+        return np.asarray(image.convert("RGB"))

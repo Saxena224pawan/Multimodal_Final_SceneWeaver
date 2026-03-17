@@ -1,38 +1,58 @@
 #!/bin/bash -l
-#SBATCH --job-name=sceneweaver_full
+#SBATCH --job-name=sceneweaver_crow
 #SBATCH --output=slurm_logs/sceneweaver_%j.out
 #SBATCH --error=slurm_logs/sceneweaver_%j.err
+<<<<<<< Updated upstream
 #SBATCH --time=6:50:00
 #SBATCH --partition=a40
 #SBATCH --gres=gpu:a40:2
 #SBATCH --cpus-per-task=16
+=======
+#SBATCH --time=04:30:00
+#SBATCH --partition=a100
+#SBATCH --gres=gpu:a100:1
+#SBATCH --cpus-per-task=12
+>>>>>>> Stashed changes
 
 set -euo pipefail
 
-# Some cluster profile scripts assume this exists; keep nounset-safe default.
-export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+################################
+# project setup
+################################
 
-# Defaults are portable; override with env vars if needed.
-DEFAULT_PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
+project_root="${SLURM_SUBMIT_DIR:-$(pwd)}"
+cd "${project_root}"
 
+<<<<<<< Updated upstream
 ENV_PATH="${ENV_PATH:-}"
 VENV_PATH="${VENV_PATH:-}"
 DEFAULT_ENV_PATH="${DEFAULT_ENV_PATH:-sceneweaver_runtime}"
 
 WAN_LOCAL_MODEL="${WAN_LOCAL_MODEL:-/home/vault/v123be/v123be36/Wan2.1-T2V-1.3B-Diffusers}"
 MODEL_STORAGE_ROOT="${MODEL_STORAGE_ROOT:-/home/vault/v123be/v123be36}"
+=======
+mkdir -p slurm_logs
+mkdir -p outputs
+mkdir -p .hf
 
-CONDA_SH="${CONDA_SH:-/apps/python/3.12-conda/etc/profile.d/conda.sh}"
-USE_MODULES="${USE_MODULES:-0}"
-PYTHON_MODULE="${PYTHON_MODULE:-python/3.12-conda}"
-CUDA_MODULE="${CUDA_MODULE:-cuda/12.4.1}"
+hpc_vault_root="/home/vault/v123be/v123be37"
+sceneweaver_runs_root="${hpc_vault_root}/sceneweaver_runs"
+mkdir -p "${sceneweaver_runs_root}"
+>>>>>>> Stashed changes
 
-USE_OFFLINE_MODE="${USE_OFFLINE_MODE:-1}"
-DEVICE="${DEVICE:-cuda}"
-STRICT_DEVICE="${STRICT_DEVICE:-0}"
-PYTHON_BIN="${PYTHON_BIN:-}"
+echo "===================================="
+echo "SceneWeaver job started"
+echo "Node: $(hostname)"
+echo "Job ID: ${SLURM_JOB_ID:-manual}"
+echo "Start time: $(date)"
+echo "Project root: $project_root"
+echo "===================================="
 
+################################
+# GPU visibility
+################################
+
+<<<<<<< Updated upstream
 DOWNLOAD_MODEL="${DOWNLOAD_MODEL:-0}"
 MODEL_REPO="${MODEL_REPO:-Wan-AI/Wan2.1-T2V-1.3B-Diffusers}"
 MODEL_DIR="${MODEL_DIR:-${PROJECT_ROOT}/models/$(basename "${MODEL_REPO}")}"
@@ -43,51 +63,169 @@ DIRECTOR_MODEL_DIR="${DIRECTOR_MODEL_DIR:-${MODEL_STORAGE_ROOT}/$(basename "${DI
 DIRECTOR_MODEL_INCLUDE="${DIRECTOR_MODEL_INCLUDE:-*.safetensors *.json *.txt tokenizer* *.model}"
 
 DINOV2_LOCAL_MODEL="${DINOV2_LOCAL_MODEL:-${MODEL_STORAGE_ROOT}/dinov2-base}"
+=======
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+echo "[INFO] CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 
-# Optional HPC module setup.
-if [ "${USE_MODULES}" = "1" ] && command -v module >/dev/null 2>&1; then
-  module purge || true
-  [ -n "${PYTHON_MODULE}" ] && module load "${PYTHON_MODULE}" || true
-  [ -n "${CUDA_MODULE}" ] && module load "${CUDA_MODULE}" || true
-fi
+################################
+# model locations
+################################
+>>>>>>> Stashed changes
 
-mkdir -p "${PROJECT_ROOT}/slurm_logs" "${PROJECT_ROOT}/outputs" "${PROJECT_ROOT}/.hf"
-cd "${PROJECT_ROOT}"
+wan_model="${hpc_vault_root}/sceneweaver_models/Wan2.2-I2V-A14B-Diffusers"
+director_model="${hpc_vault_root}/Multimodal_Final_SceneWeaver/LLM_MODEL/Qwen2.5-3B-Instruct"
+dinov2_model="${hpc_vault_root}/facebook/dinov2-base"
+window_plan_json="${project_root}/configs/window_plans/thirsty_crow_story.json"
 
+################################
+# safety checks
+################################
+
+<<<<<<< Updated upstream
 # Default to lit_eval when neither ENV_PATH nor VENV_PATH is provided.
 if [ -z "${ENV_PATH}" ] && [ -z "${VENV_PATH}" ]; then
   ENV_PATH="${DEFAULT_ENV_PATH}"
 fi
+=======
+echo "[CHECK] verifying model paths..."
 
-# Optional runtime activation.
-if [ -n "${ENV_PATH}" ]; then
-  if [ -f "${CONDA_SH}" ]; then
-    # shellcheck disable=SC1090
-    source "${CONDA_SH}"
-  fi
-  command -v conda >/dev/null 2>&1 || { echo "Conda command not found. Set CONDA_SH correctly or activate env before running."; exit 1; }
-  conda activate "${ENV_PATH}"
-elif [ -n "${VENV_PATH}" ]; then
-  [ -f "${VENV_PATH}/bin/activate" ] || { echo "Virtualenv activate script not found at ${VENV_PATH}/bin/activate"; exit 1; }
-  # shellcheck disable=SC1090
-  source "${VENV_PATH}/bin/activate"
-fi
+[ -d "$wan_model" ] || { echo "ERROR: Wan model missing at $wan_model"; exit 1; }
+[ -d "$director_model" ] || { echo "ERROR: Director model missing at $director_model"; exit 1; }
+[ -d "$dinov2_model" ] || { echo "ERROR: DINOv2 model missing at $dinov2_model"; exit 1; }
+[ -f "$window_plan_json" ] || { echo "ERROR: Window plan missing at $window_plan_json"; exit 1; }
+>>>>>>> Stashed changes
+
+echo "[CHECK] models found ✓"
+
+################################
+# python environment
+################################
+
+echo "[INFO] activating conda environment..."
+
+source /apps/python/3.12-conda/etc/profile.d/conda.sh
+conda activate sceneweaver311
+
+python_bin=$(which python)
+echo "[INFO] python executable: $python_bin"
 
 export PYTHONUNBUFFERED=1
-export PYTHONNOUSERSITE=1
-export HF_HOME="${HF_HOME:-${PROJECT_ROOT}/.hf}"
+export HF_HOME="${project_root}/.hf"
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
+export DIFFUSERS_OFFLINE=1
 
-if [ "${USE_OFFLINE_MODE}" = "1" ] && { [ "${DOWNLOAD_MODEL}" = "1" ] || [ "${DOWNLOAD_DIRECTOR_MODEL}" = "1" ]; }; then
-  echo "USE_OFFLINE_MODE=1 conflicts with model download. Switching to online mode for this run."
-  USE_OFFLINE_MODE="0"
+################################
+# generation parameters
+################################
+
+total_minutes=0.8
+window_seconds=8
+
+fps=8
+num_frames=65
+steps=28
+guidance_scale=5.4
+
+height=480
+width=832
+
+seed=42
+device=cuda
+
+################################
+# continuity parameters
+################################
+
+continuity_candidates=2
+continuity_min_score=0.74
+continuity_regen_attempts=2
+
+critic_story_weight=0.70
+transition_weight=0.65
+environment_weight=0.35
+visual_quality_weight=0.18
+
+################################
+# output directory
+################################
+
+run_stamp=$(date +%y%m%d_%H%M%S)
+output_dir="${sceneweaver_runs_root}/thirsty_crow_${run_stamp}"
+
+mkdir -p "$output_dir"
+
+echo "[INFO] output directory:"
+echo "$output_dir"
+
+################################
+# storyline
+################################
+
+storyline="A thirsty crow searches for water, finds a clay pot, raises the water by dropping stones into it, and finally drinks."
+
+################################
+# style
+################################
+
+style_prefix="cinematic storybook realism, single black crow, expressive eyes, detailed feathers, clear beak actions, stable camera, coherent motion, detailed clay pot, visible stones, warm daylight, high detail"
+negative_prompt="blurry, flicker, duplicate bird, extra birds, multiple crows, deformed beak, broken pot, background change, watermark, text, logo, collage, humans"
+character_lock="keep one black crow consistent across all windows, with the same clay pot and the same dusty courtyard under the same tree."
+
+################################
+# reference conditioning
+################################
+
+reference_strength=0.68
+reference_tail_frames=4
+
+################################
+# initial reference frame
+################################
+
+initial_image="${project_root}/thirsty_crow_start_image.png"
+
+if [ ! -f "$initial_image" ]; then
+echo "[INFO] generating thirsty crow start image..."
+
+"$python_bin" <<'PYEOF'
+from PIL import Image, ImageDraw
+
+img = Image.new("RGB", (832, 480), (214, 188, 140))
+d = ImageDraw.Draw(img)
+
+d.ellipse((60, 20, 790, 430), fill=(224, 205, 160))
+d.ellipse((520, 80, 740, 300), fill=(110, 90, 60))
+d.rectangle((0, 360, 832, 480), fill=(191, 155, 102))
+
+d.ellipse((500, 30, 780, 210), fill=(110, 120, 75))
+d.rectangle((620, 120, 650, 360), fill=(108, 85, 50))
+
+d.ellipse((250, 140, 470, 390), fill=(166, 100, 52))
+d.rectangle((295, 200, 425, 390), fill=(166, 100, 52))
+d.ellipse((280, 120, 440, 230), fill=(189, 121, 68))
+d.ellipse((308, 215, 412, 320), fill=(70, 110, 145))
+
+d.ellipse((120, 180, 240, 250), fill=(25, 25, 25))
+d.polygon([(230, 210), (280, 195), (238, 228)], fill=(210, 160, 70))
+d.polygon([(105, 205), (78, 175), (95, 228)], fill=(18, 18, 18))
+d.polygon([(165, 246), (150, 300), (188, 248)], fill=(18, 18, 18))
+d.polygon([(192, 246), (182, 303), (220, 250)], fill=(18, 18, 18))
+d.ellipse((205, 198, 215, 208), fill=(240, 240, 220))
+
+for x, y in ((510, 350), (545, 368), (585, 344), (622, 364), (662, 342), (700, 360)):
+    d.ellipse((x, y, x + 18, y + 14), fill=(120, 112, 102))
+
+img.save("thirsty_crow_start_image.png")
+PYEOF
 fi
 
-if [ "${USE_OFFLINE_MODE}" = "1" ]; then
-  export HF_HUB_OFFLINE=1
-  export TRANSFORMERS_OFFLINE=1
-  export DIFFUSERS_OFFLINE=1
-fi
+################################
+# build argument list
+################################
 
+<<<<<<< Updated upstream
 # STORYLINE
 if [ -z "${STORYLINE:-}" ]; then
   STORYLINE="$(cat <<'STORY_EOF'
@@ -479,91 +617,74 @@ echo "REPAIR_TRANSITION_THRESHOLD=${REPAIR_TRANSITION_THRESHOLD}"
 echo "REPAIR_CRITIC_THRESHOLD=${REPAIR_CRITIC_THRESHOLD}"
 echo "CAPTIONER_MODEL_ID=${CAPTIONER_MODEL_ID}"
 echo "CAPTIONER_DEVICE=${CAPTIONER_DEVICE}"
+=======
+ARGS=(
+--storyline "$storyline"
+--window_plan_json "$window_plan_json"
+--total_minutes $total_minutes
+--window_seconds $window_seconds
+--video_model_id "$wan_model"
+--director_model_id "$director_model"
+--embedding_backend dinov2
+--embedding_model_id "$dinov2_model"
+--captioner_model_id none
+--num_frames $num_frames
+--steps $steps
+--guidance_scale $guidance_scale
+--height $height
+--width $width
+--fps $fps
+--seed $seed
+--device $device
+--output_dir "$output_dir"
+--style_prefix "$style_prefix"
+--negative_prompt "$negative_prompt"
+--character_lock "$character_lock"
+--reference_conditioning
+--reference_tail_frames $reference_tail_frames
+--reference_strength $reference_strength
+--visual_quality_weight $visual_quality_weight
+--initial_condition_image "$initial_image"
+--continuity_candidates $continuity_candidates
+--continuity_min_score $continuity_min_score
+--continuity_regen_attempts $continuity_regen_attempts
+--critic_story_weight $critic_story_weight
+--transition_weight $transition_weight
+--environment_weight $environment_weight
+--disable_random_generation
+--last_frame_memory
+--shot_plan_defaults cinematic
+--no-noise_conditioning
+)
 
-bash -n "${BASH_SOURCE[0]}"
+################################
+# run SceneWeaver
+################################
 
-if [ "${PARALLEL_GPUS_PER_NODE}" -gt 1 ]; then
-  BASE_SHARDS="${WINDOW_SHARD_COUNT}"
-  BASE_INDEX="${WINDOW_SHARD_INDEX}"
-  if [ "${BASE_SHARDS}" -le 1 ]; then
-    BASE_SHARDS="${PARALLEL_GPUS_PER_NODE}"
-    BASE_INDEX=0
-  fi
-  pids=()
-  for local_gpu in $(seq 0 $((PARALLEL_GPUS_PER_NODE - 1))); do
-    global_shard_index=$((BASE_INDEX * PARALLEL_GPUS_PER_NODE + local_gpu))
-    global_shard_count=$((BASE_SHARDS * PARALLEL_GPUS_PER_NODE))
-    SUB_CMD=("${CMD[@]}" --window_shard_count "${global_shard_count}" --window_shard_index "${global_shard_index}")
-    echo "[parallel] launch gpu=${local_gpu} shard=${global_shard_index}/${global_shard_count}"
-    CUDA_VISIBLE_DEVICES="${local_gpu}" "${SUB_CMD[@]}" &
-    pids+=("$!")
-  done
-  rc=0
-  for pid in "${pids[@]}"; do
-    if ! wait "${pid}"; then
-      rc=1
-    fi
-  done
-  if [ "${rc}" -ne 0 ]; then
-    echo "One or more parallel shard workers failed."
-    exit "${rc}"
-  fi
-else
-  "${CMD[@]}"
-fi
+echo "===================================="
+echo "Starting SceneWeaver pipeline"
+echo "===================================="
+>>>>>>> Stashed changes
 
-if [ "${RUN_REPAIR_PASS}" = "1" ] && [ "${WINDOW_SHARD_COUNT}" = "1" ] && [ "${PARALLEL_GPUS_PER_NODE}" = "0" ]; then
-  REPAIR_CMD=("${PYTHON_BIN}" scripts/08_repair_windows.py
-    --run_dir "${OUTPUT_DIR}"
-    --embedding_backend "${EMBEDDING_BACKEND}"
-    --embedding_model_id "${EMBEDDING_MODEL_ID}"
-    --video_model_id "${VIDEO_MODEL_ID}"
-    --dtype "${DTYPE:-bfloat16}"
-    --device "${DEVICE}"
-    --num_frames "${NUM_FRAMES}"
-    --steps "${STEPS}"
-    --guidance_scale "${GUIDANCE_SCALE}"
-    --height "${HEIGHT}"
-    --width "${WIDTH}"
-    --fps "${FPS}"
-    --candidates "${REPAIR_CANDIDATES}"
-    --attempts "${REPAIR_ATTEMPTS}"
-    --accept_score "${REPAIR_ACCEPT_SCORE}"
-    --transition_threshold "${REPAIR_TRANSITION_THRESHOLD}"
-    --critic_threshold "${REPAIR_CRITIC_THRESHOLD}")
-  if [ -n "${CAPTIONER_MODEL_ID}" ]; then
-    REPAIR_CMD+=(--captioner_model_id "${CAPTIONER_MODEL_ID}" --captioner_device "${CAPTIONER_DEVICE}")
-    if [ "${CAPTIONER_STUB_FALLBACK}" = "0" ]; then
-      REPAIR_CMD+=(--captioner_stub_fallback 0)
-    fi
-  fi
-  if [ "${REPAIR_REPLACE_ORIGINAL}" = "1" ]; then
-    REPAIR_CMD+=(--replace_original)
-  fi
-  "${REPAIR_CMD[@]}"
-fi
+echo "[DEBUG] Running command:"
+printf '%q ' "$python_bin" scripts/run_story_pipeline.py "${ARGS[@]}"
+echo ""
 
-# Optional: concatenate generated windows into one video.
-if [ "${COMBINE_WINDOWS}" = "1" ] && [ "${WINDOW_SHARD_COUNT}" = "1" ] && [ "${PARALLEL_GPUS_PER_NODE}" = "0" ]; then
-  CLIPS_DIR="${OUTPUT_DIR}/clips"
-  COMBINED_VIDEO_PATH="${OUTPUT_DIR}/${COMBINED_VIDEO_NAME}"
-  CONCAT_LIST="${OUTPUT_DIR}/concat_windows.txt"
+"$python_bin" scripts/run_story_pipeline.py "${ARGS[@]}"
 
-  if [ -d "${CLIPS_DIR}" ] && compgen -G "${CLIPS_DIR}/window_*.mp4" > /dev/null; then
-    : > "${CONCAT_LIST}"
-    for clip in "${CLIPS_DIR}"/window_*.mp4; do
-      printf "file '%s'\n" "$(realpath "${clip}")" >> "${CONCAT_LIST}"
-    done
+################################
+# job finished
+################################
 
-    if command -v ffmpeg >/dev/null 2>&1; then
-      if ! ffmpeg -y -f concat -safe 0 -i "${CONCAT_LIST}" -c copy "${COMBINED_VIDEO_PATH}"; then
-        ffmpeg -y -f concat -safe 0 -i "${CONCAT_LIST}" -c:v libx264 -preset veryfast -crf 18 -c:a aac "${COMBINED_VIDEO_PATH}"
-      fi
-      echo "Combined continuity preview: ${COMBINED_VIDEO_PATH}"
-    else
-      echo "ffmpeg not found; skipping combined video creation."
-    fi
-  else
-    echo "No window clips found in ${CLIPS_DIR}; skipping combined video creation."
-  fi
-fi
+echo "===================================="
+echo "SceneWeaver generation finished"
+echo "End time: $(date)"
+echo "===================================="
+
+echo "[INFO] Generated clips:"
+find "$output_dir" -name "*.mp4" || true
+
+echo "===================================="
+echo "Output directory:"
+echo "$output_dir"
+echo "===================================="
