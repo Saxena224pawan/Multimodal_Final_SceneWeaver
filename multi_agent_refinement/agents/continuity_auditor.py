@@ -1,8 +1,14 @@
 """ContinuityAuditor Agent - Checks visual continuity between windows"""
 
 from typing import Any, List, Optional
-import numpy as np
 from ..agent_base import Agent, AgentResult
+
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    np = None
 
 
 class ContinuityAuditor(Agent):
@@ -70,7 +76,10 @@ class ContinuityAuditor(Agent):
 
         # Aggregate score
         if scores:
-            aggregate_score = np.mean(list(scores.values()))
+            if HAS_NUMPY:
+                aggregate_score = np.mean(list(scores.values()))
+            else:
+                aggregate_score = sum(scores.values()) / len(scores)
         else:
             aggregate_score = 0.75  # Default if minimal checks
 
@@ -99,7 +108,11 @@ class ContinuityAuditor(Agent):
             curr_embed = self.embedding_model.embed_frame(current_frames[0])
 
             # Cosine similarity
-            similarity = float(np.dot(prev_embed, curr_embed))
+            if HAS_NUMPY:
+                similarity = float(np.dot(prev_embed, curr_embed))
+            else:
+                similarity = self._cosine_similarity(prev_embed, curr_embed)
+
             return min(max(similarity, 0.0), 1.0)
         except Exception as e:
             print(f"Warning: Character consistency check failed: {e}")
@@ -117,8 +130,34 @@ class ContinuityAuditor(Agent):
             curr_embed = self.embedding_model.embed_frame(first_curr_frame[0])
 
             # Cosine similarity
-            similarity = float(np.dot(prev_embed, curr_embed))
+            if HAS_NUMPY:
+                similarity = float(np.dot(prev_embed, curr_embed))
+            else:
+                similarity = self._cosine_similarity(prev_embed, curr_embed)
+
             return min(max(similarity, 0.0), 1.0)
         except Exception as e:
             print(f"Warning: Motion smoothness check failed: {e}")
             return 0.75
+
+    @staticmethod
+    def _cosine_similarity(vec1: Any, vec2: Any) -> float:
+        """Pure Python cosine similarity (fallback for numpy)"""
+        try:
+            # Convert to lists if needed
+            v1 = list(vec1) if not isinstance(vec1, list) else vec1
+            v2 = list(vec2) if not isinstance(vec2, list) else vec2
+
+            # Dot product
+            dot_product = sum(a * b for a, b in zip(v1, v2))
+
+            # Magnitudes
+            mag1 = (sum(a * a for a in v1)) ** 0.5
+            mag2 = (sum(b * b for b in v2)) ** 0.5
+
+            # Cosine similarity
+            if mag1 * mag2 < 1e-12:
+                return 0.5
+            return dot_product / (mag1 * mag2)
+        except Exception:
+            return 0.5
