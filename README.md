@@ -27,6 +27,37 @@ sbatch --partition=a40 --gres=gpu:a40:1 \
 5. Optional memory embeddings (`clip` or `dinov2`) provide continuity feedback.
 6. Optional captioner hook (BLIP-2/LLaVA) captions each generated clip to tighten environment anchors and detect duplicate subjects.
 
+## StorySpec Authoring (Characters + Objects + Beats)
+Use this path when you want story-specific entities and tighter prompt control:
+
+1) Build StorySpec from a raw storyline (LLM-assisted, heuristic fallback):
+```bash
+python scripts/02_story/01_storyline_to_story_spec.py \
+  --storyline "A courier races across a flooded station to deliver a final letter before the last train departs." \
+  --runtime-seconds 48 \
+  --output outputs/story/story_spec.generated.json
+```
+
+2) Convert StorySpec into window-level prompts:
+```bash
+python scripts/02_story/00_story_to_scene_plan.py \
+  --story-spec outputs/story/story_spec.generated.json \
+  --output outputs/story/scene_plan.json \
+  --window-seconds 4
+```
+
+Or run both steps in one command:
+```bash
+python scripts/02_story/02_storyline_to_scene_plan.py \
+  --storyline "A courier races across a flooded station to deliver a final letter before the last train departs." \
+  --runtime-seconds 48 \
+  --scene-plan-output outputs/story/scene_plan.generated.json
+```
+
+`StorySpec` now supports:
+- root `objects`: per-story prop/set definitions with stable IDs
+- beat `must_include_objects`: explicit object continuity per beat
+
 ## Captioner Hook (optional)
 - Download a captioner checkpoint (example already supported):  
   `huggingface-cli download Salesforce/blip2-flan-t5-xl --local-dir models/blip2-flan-t5-xl --local-dir-use-symlinks False`

@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="/home/hpc/v123be/v123be37/Multimodal_Final_SceneWeaver"
+PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}}"
 DINO_MODEL_ID="${PROJECT_ROOT}/models/dinov2-base"
 ADAPTER_CKPT="${PROJECT_ROOT}/outputs/pororo_continuity_adapter.pt"
 

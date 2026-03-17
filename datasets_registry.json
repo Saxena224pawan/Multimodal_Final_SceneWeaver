@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "datasets": [
+    {
+      "key": "story_generation_bundle",
+      "repo_id": "RUCAIBox/Story-Generation",
+      "repo_type": "dataset",
+      "module": "llm_model",
+      "purpose": "Core text storytelling pretraining corpus bundle.",
+      "source": "https://huggingface.co/datasets/RUCAIBox/Story-Generation",
+      "local_subdir": "story_generation_bundle",
+      "license": "unknown",
+      "splits": ["train", "validation", "test"]
+    },
+    {
+      "key": "rocstories_combined",
+      "repo_id": "shawon/rocstories-combined",
+      "repo_type": "dataset",
+      "module": "llm_model",
+      "purpose": "Short coherent 5-sentence story arcs.",
+      "source": "https://huggingface.co/datasets/shawon/rocstories-combined",
+      "local_subdir": "rocstories_combined",
+      "license": "unknown",
+      "splits": ["train", "validation", "test"]
+    },
+    {
+      "key": "writing_prompt_aug",
+      "repo_id": "fabraz/writingPromptAug",
+      "repo_type": "dataset",
+      "module": "llm_model",
+      "purpose": "Prompt-to-story supervision for longer narrative generation.",
+      "source": "https://huggingface.co/datasets/fabraz/writingPromptAug",
+      "local_subdir": "writing_prompt_aug",
+      "license": "unknown",
+      "splits": ["train", "validation", "test"]
+    },
+    {
+      "key": "vwp_visual_writing_prompts",
+      "repo_id": "tonyhong/vwp",
+      "repo_type": "dataset",
+      "module": "caption_gen",
+      "purpose": "Visual storytelling with aligned image sequences and story text.",
+      "source": "https://huggingface.co/datasets/tonyhong/vwp",
+      "local_subdir": "vwp_visual_writing_prompts",
+      "license": "unknown",
+      "splits": ["train", "validation", "test"]
+    },
+    {
+      "key": "msrvtt",
+      "repo_id": "AlexZigma/msr-vtt",
+      "repo_type": "dataset",
+      "module": "window_gen",
+      "purpose": "Video-caption pairs for clip/window language grounding.",
+      "source": "https://huggingface.co/datasets/AlexZigma/msr-vtt",
+      "local_subdir": "msrvtt",
+      "license": "unknown",
+      "splits": ["train", "validation", "test"]
+    },
+    {
+      "key": "activitynet_captions",
+      "repo_id": "friedrichor/ActivityNet_Captions",
+      "repo_type": "dataset",
+      "module": "global_local_emb_feedback",
+      "purpose": "Long-form temporal captions for continuity and retrieval feedback.",
+      "source": "https://huggingface.co/datasets/friedrichor/ActivityNet_Captions",
+      "local_subdir": "activitynet_captions",
+      "license": "unknown",
+      "splits": ["train", "validation", "test"]
+    },
+    {
+      "key": "vatex",
+      "repo_id": "HuggingFaceM4/vatex",
+      "repo_type": "dataset",
+      "module": "feedback_caption",
+      "purpose": "Multi-caption video supervision for caption alignment scoring.",
+      "source": "https://huggingface.co/datasets/HuggingFaceM4/vatex",
+      "local_subdir": "vatex",
+      "license": "unknown",
+      "splits": ["train", "validation", "test"]
+    },
+    {
+      "key": "vistorybench",
+      "repo_id": "ViStoryBench/ViStoryBench",
+      "repo_type": "dataset",
+      "module": "video_backbone",
+      "purpose": "Story visualization benchmark for coherence and character consistency.",
+      "source": "https://huggingface.co/datasets/ViStoryBench/ViStoryBench",
+      "local_subdir": "vistorybench",
+      "license": "unknown",
+      "splits": ["test"]
+    },
+    {
+      "key": "msr_vtt_enhanced",
+      "repo_id": "AlexZigma/msr-vtt",
+      "repo_type": "dataset",
+      "module": "video_backbone",
+      "purpose": "Enhanced MSR-VTT dataset with better captions for I2V training.",
+      "source": "https://huggingface.co/datasets/AlexZigma/msr-vtt",
+      "local_subdir": "msr_vtt_enhanced",
+      "license": "unknown",
+      "splits": ["train", "validation", "test"]
+    },
+    {
+      "key": "video_feedback_annotated",
+      "repo_id": "TIGER-Lab/VideoFeedback",
+      "repo_type": "dataset",
+      "module": "video_backbone",
+      "purpose": "Annotated video feedback dataset for quality improvement.",
+      "source": "https://huggingface.co/datasets/TIGER-Lab/VideoFeedback",
+      "local_subdir": "video_feedback_annotated",
+      "license": "apache-2.0",
+      "splits": ["train", "validation"],
+      "config": "annotated"
+    },
+    {
+      "key": "llava_video_academic",
+      "repo_id": "lmms-lab/LLaVA-Video-178K",
+      "repo_type": "dataset",
+      "module": "video_backbone",
+      "purpose": "LLaVA video instruction dataset for academic video understanding.",
+      "source": "https://huggingface.co/datasets/lmms-lab/LLaVA-Video-178K",
+      "local_subdir": "llava_video_academic",
+      "license": "apache-2.0",
+      "splits": ["train"],
+      "config": "0_30_s_academic_v0_1"
+    }
+  ]
+}

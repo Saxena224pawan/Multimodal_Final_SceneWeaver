@@ -21,7 +21,17 @@ vision = ["Pillow>=10.0", "transformers>=4.41", "torch>=2.1"]
 video = ["imageio>=2.34", "diffusers>=0.30", "accelerate>=0.30"]
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = [
+  "Caption_Gen",
+  "director_llm",
+  "memory_module",
+  "video_backbone",
+  "LLM_MODEL",
+  "HF_PLUGIN",
+  "VIDEO_GENERATIVE_BACKBONE",
+  "Globa_Local_Emb_Feedback",
+]
