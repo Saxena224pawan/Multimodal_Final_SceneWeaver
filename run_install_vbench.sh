@@ -9,6 +9,11 @@
 
 set -euo pipefail
 
+COMMON_SLURM_ROOT="${COMMON_SLURM_ROOT:-${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}}}"
+COMMON_SLURM_SH="${COMMON_SLURM_ROOT}/slurm_common.sh"
+# shellcheck source=./slurm_common.sh
+source "${COMMON_SLURM_SH}"
+
 # Keep nounset-safe default expected by some cluster profiles.
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 
@@ -17,12 +22,12 @@ PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 
 ENV_PATH="${ENV_PATH:-}"
 VENV_PATH="${VENV_PATH:-}"
-DEFAULT_ENV_PATH="${DEFAULT_ENV_PATH:-sceneweaver_runtime}"
+DEFAULT_ENV_PATH="${DEFAULT_ENV_PATH:-${SCENEWEAVER_DEFAULT_ENV}}"
 
-CONDA_SH="${CONDA_SH:-/apps/python/3.12-conda/etc/profile.d/conda.sh}"
+CONDA_SH="${CONDA_SH:-${SCENEWEAVER_CONDA_SH}}"
 USE_MODULES="${USE_MODULES:-0}"
-PYTHON_MODULE="${PYTHON_MODULE:-python/3.12-conda}"
-CUDA_MODULE="${CUDA_MODULE:-cuda/12.4.1}"
+PYTHON_MODULE="${PYTHON_MODULE:-${SCENEWEAVER_PYTHON_MODULE}}"
+CUDA_MODULE="${CUDA_MODULE:-${SCENEWEAVER_CUDA_MODULE}}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 
 VBENCH_PACKAGE="${VBENCH_PACKAGE:-vbench}"
@@ -30,8 +35,8 @@ UPGRADE_PIP="${UPGRADE_PIP:-1}"
 EXTRA_PIP_PACKAGES="${EXTRA_PIP_PACKAGES:-setuptools==80.9.0}"
 DRY_RUN="${DRY_RUN:-0}"
 USE_PROXY="${USE_PROXY:-1}"
-PROXY_URL="${PROXY_URL:-http://proxy:80}"
-NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,::1}"
+PROXY_URL="${PROXY_URL:-${SCENEWEAVER_PROXY_URL}}"
+NO_PROXY="${NO_PROXY:-${SCENEWEAVER_NO_PROXY}}"
 
 if [ "${USE_MODULES}" = "1" ] && command -v module >/dev/null 2>&1; then
   module purge || true

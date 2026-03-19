@@ -10,9 +10,9 @@ import numpy as np
 
 def _default_local_wan_model_id() -> str:
     candidates = [
-        "/home/vault/v123be/v123be37/sceneweaver_models/Wan2.2-I2V-A14B-Diffusers",
-        "/home/vault/v123be/v123be37/sceneweaver_models/Wan2.1-I2V-14B-720P-Diffusers",
-        "/home/vault/v123be/v123be37/sceneweaver_models/Wan2.1-I2V-14B-480P-Diffusers",
+        "/home/vault/v123be/v123be36/sceneweaver_models/Wan2.2-I2V-A14B-Diffusers",
+        "/home/vault/v123be/v123be36/sceneweaver_models/Wan2.1-I2V-14B-720P-Diffusers",
+        "/home/vault/v123be/v123be36/sceneweaver_models/Wan2.1-I2V-14B-480P-Diffusers",
     ]
     for raw_path in candidates:
         path = Path(raw_path)
@@ -75,38 +75,8 @@ class WanBackbone:
             for p in ("image", "last_image", "conditioning_frames", "video", "frames", "init_image")
         )
 
-<<<<<<< Updated upstream
-        try:
-            import torch
-        except ImportError as exc:
-            raise ImportError(
-                "Missing/unsupported runtime dependencies for text-to-video. "
-                "Install or upgrade: torch, diffusers, transformers, accelerate. "
-                "Example: pip install -U 'diffusers>=0.30' transformers accelerate"
-            ) from exc
-        try:
-            from diffusers import AutoPipelineForText2Video as PipelineClass
-        except Exception:
-            try:
-                # Fallback for diffusers builds that do not expose AutoPipelineForText2Video.
-                from diffusers import DiffusionPipeline as PipelineClass
-            except Exception as exc:
-                detail = str(exc)
-                xformers_hint = ""
-                if "xformers" in detail.lower() or "jitcallable._set_src" in detail.lower():
-                    xformers_hint = (
-                        " Detected an xformers runtime mismatch. "
-                        "Uninstall xformers or install a build matching this torch/cuda runtime."
-                    )
-                raise ImportError(
-                    "Could not import a usable diffusers pipeline class. "
-                    "Expected AutoPipelineForText2Video or DiffusionPipeline."
-                    f"{xformers_hint}"
-                ) from exc
-=======
     def _to_pil(self, frame: Any, width: int, height: int):
         from PIL import Image
->>>>>>> Stashed changes
 
         img = Image.fromarray(self._frame_to_uint8(frame))
         if img.size != (width, height):
@@ -330,6 +300,17 @@ class WanBackbone:
             self.config.model_id,
             torch_dtype=torch_dtype,
         )
+
+        transformer = getattr(pipe, "transformer", None)
+        transformer_config = getattr(transformer, "config", None)
+        in_channels = getattr(transformer_config, "in_channels", None)
+        if in_channels is not None and int(in_channels) != 36:
+            raise ValueError(
+                "WanBackbone uses the Diffusers image-to-video pipeline, but the loaded checkpoint "
+                f"appears to be incompatible: transformer.in_channels={in_channels}. "
+                "This usually means T2V weights were passed into the I2V pipeline. "
+                f"Set video_model_id to an I2V checkpoint such as '/home/vault/v123be/v123be36/sceneweaver_models/Wan2.2-I2V-A14B-Diffusers' instead of '{self.config.model_id}'."
+            )
 
         target_device = self._resolve_device(torch)
         if self.config.enable_cpu_offload and target_device == "cuda":

@@ -7,7 +7,7 @@ import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +38,7 @@ CUSTOM_INPUT_SUPPORTED = {
     "motion_smoothness",
     "dynamic_degree",
 }
+VIDEO_GLOBS = ("*.mp4", "*.mov", "*.mkv", "*.avi")
 
 
 def parse_dimensions(raw: str) -> List[str]:
@@ -67,6 +68,18 @@ def ensure_videos_path(path: Path) -> Path:
     if path.is_file() and path.suffix.lower() not in {".mp4", ".mov", ".mkv", ".avi"}:
         raise ValueError(f"Expected a video file for videos_path, got: {path.as_posix()}")
     return path
+
+
+def list_input_videos(path: Path) -> List[Path]:
+    if path.is_file():
+        return [path]
+    if not path.is_dir():
+        return []
+    videos: List[Path] = []
+    for pattern in VIDEO_GLOBS:
+        videos.extend([p for p in path.rglob(pattern) if p.is_file()])
+    videos.sort(key=lambda p: p.as_posix())
+    return videos
 
 
 def build_vbench_command(
@@ -264,13 +277,126 @@ def prepare_sequential_input(
 
 
 def count_input_videos(path: Path) -> int:
-    if path.is_file():
-        return 1
-    exts = ("*.mp4", "*.mov", "*.mkv", "*.avi")
-    count = 0
-    for ext in exts:
-        count += len(list(path.rglob(ext)))
-    return count
+    return len(list_input_videos(path))
+
+
+def _load_imageio():
+    try:
+        import imageio.v2 as imageio
+    except Exception as exc:
+        raise RuntimeError(
+            "Chunked continuity evaluation requires imageio/imageio-ffmpeg in the active environment."
+        ) from exc
+    return imageio
+
+
+def _safe_video_stem(path: Path) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", path.stem).strip("._")
+    return cleaned or "video"
+
+
+def prepare_chunked_input(
+    source_path: Path,
+    run_dir: Path,
+    chunk_seconds: float,
+    chunk_frames: int,
+    dry_run: bool,
+) -> Tuple[Path, Dict[str, object]]:
+    meta: Dict[str, object] = {
+        "chunked": False,
+        "chunk_seconds": (float(chunk_seconds) if chunk_seconds > 0 else None),
+        "chunk_frames": (int(chunk_frames) if chunk_frames > 0 else None),
+        "source_video_count": count_input_videos(source_path),
+        "chunk_video_count": 0,
+        "chunk_manifest": None,
+    }
+    if chunk_seconds <= 0 and chunk_frames <= 0:
+        return source_path, meta
+
+    chunk_dir = run_dir / "_chunked_input"
+    meta["chunked"] = True
+    if dry_run:
+        return chunk_dir, meta
+
+    input_videos = list_input_videos(source_path)
+    if not input_videos:
+        return source_path, meta
+
+    imageio = _load_imageio()
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    manifest: List[Dict[str, object]] = []
+    total_chunks = 0
+
+    for video_idx, video_path in enumerate(input_videos):
+        reader = imageio.get_reader(video_path.as_posix())
+        writer = None
+        current_chunk_path: Optional[Path] = None
+        current_chunk_frames = 0
+        chunk_idx = 0
+        try:
+            try:
+                fps = float(reader.get_meta_data().get("fps", 8.0))
+            except Exception:
+                fps = 8.0
+            if fps <= 0:
+                fps = 8.0
+            target_frames = int(chunk_frames) if chunk_frames > 0 else max(1, int(round(chunk_seconds * fps)))
+
+            for frame in reader:
+                if writer is None:
+                    current_chunk_path = (
+                        chunk_dir
+                        / f"video_{video_idx:04d}_{_safe_video_stem(video_path)}_chunk_{chunk_idx:04d}.mp4"
+                    )
+                    writer = imageio.get_writer(current_chunk_path.as_posix(), fps=fps)
+                    current_chunk_frames = 0
+                writer.append_data(frame)
+                current_chunk_frames += 1
+
+                if current_chunk_frames >= target_frames:
+                    writer.close()
+                    writer = None
+                    assert current_chunk_path is not None
+                    manifest.append(
+                        {
+                            "source_video": video_path.as_posix(),
+                            "chunk_path": current_chunk_path.as_posix(),
+                            "chunk_index": chunk_idx,
+                            "frames": current_chunk_frames,
+                            "fps": fps,
+                            "seconds": current_chunk_frames / fps,
+                            "target_frames": target_frames,
+                        }
+                    )
+                    total_chunks += 1
+                    chunk_idx += 1
+
+            if writer is not None:
+                writer.close()
+                writer = None
+                assert current_chunk_path is not None
+                manifest.append(
+                    {
+                        "source_video": video_path.as_posix(),
+                        "chunk_path": current_chunk_path.as_posix(),
+                        "chunk_index": chunk_idx,
+                        "frames": current_chunk_frames,
+                        "fps": fps,
+                        "seconds": current_chunk_frames / fps,
+                        "target_frames": target_frames,
+                    }
+                )
+                total_chunks += 1
+        finally:
+            if writer is not None:
+                writer.close()
+            reader.close()
+
+    manifest_path = chunk_dir / "chunk_manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    meta["chunk_video_count"] = total_chunks
+    meta["chunk_manifest"] = manifest_path.as_posix()
+    return chunk_dir, meta
 
 
 def fmt_seconds(total: float) -> str:
@@ -514,6 +640,18 @@ def main() -> None:
             "'concat_windows' combines window_*.mp4 into one sequential video before evaluation."
         ),
     )
+    parser.add_argument(
+        "--chunk_seconds",
+        type=float,
+        default=0.0,
+        help="Optional: split prepared input videos into fixed-duration chunks before VBench evaluation.",
+    )
+    parser.add_argument(
+        "--chunk_frames",
+        type=int,
+        default=0,
+        help="Optional: split prepared input videos into fixed-frame chunks before VBench evaluation.",
+    )
     parser.add_argument("--vbench_bin", type=str, default="vbench", help="VBench executable name/path.")
     parser.add_argument("--ngpus", type=int, default=1, help="GPU count passed to VBench.")
     parser.add_argument(
@@ -528,6 +666,12 @@ def main() -> None:
         help="Print commands and write plan file only. Do not execute VBench.",
     )
     args = parser.parse_args()
+    if args.chunk_seconds < 0:
+        raise ValueError("--chunk_seconds must be >= 0")
+    if args.chunk_frames < 0:
+        raise ValueError("--chunk_frames must be >= 0")
+    if args.chunk_seconds > 0 and args.chunk_frames > 0:
+        raise ValueError("Use only one of --chunk_seconds or --chunk_frames.")
 
     outputs_root = Path(args.outputs_root).resolve()
     report_root = Path(args.report_root).resolve()
@@ -549,10 +693,17 @@ def main() -> None:
     else:
         source_videos_path = ensure_videos_path(find_latest_story_run(outputs_root))
 
-    videos_path, prep_meta = prepare_sequential_input(
+    prepared_videos_path, prep_meta = prepare_sequential_input(
         source_path=source_videos_path,
         run_dir=run_dir,
         sequence_mode=args.sequence_mode,
+        dry_run=args.dry_run,
+    )
+    videos_path, chunk_meta = prepare_chunked_input(
+        source_path=prepared_videos_path,
+        run_dir=run_dir,
+        chunk_seconds=float(args.chunk_seconds),
+        chunk_frames=int(args.chunk_frames),
         dry_run=args.dry_run,
     )
     if not args.dry_run:
@@ -572,8 +723,13 @@ def main() -> None:
     source_video_count = count_input_videos(source_videos_path)
     print(f"run_name={run_name}")
     print(f"source_videos_path={source_videos_path.as_posix()}")
+    print(f"prepared_videos_path={prepared_videos_path.as_posix()}")
     print(f"evaluation_videos_path={videos_path.as_posix()}")
     print(f"sequence_mode={args.sequence_mode}")
+    if chunk_meta.get("chunked"):
+        print(f"chunk_seconds={chunk_meta.get('chunk_seconds')}")
+        print(f"chunk_frames={chunk_meta.get('chunk_frames')}")
+        print(f"chunk_manifest={chunk_meta.get('chunk_manifest') or '<dry-run>'}")
     print(f"input_videos={input_video_count}")
     if prep_meta.get("combined"):
         print(f"source_window_count={prep_meta.get('source_window_count', 0)}")
@@ -667,10 +823,15 @@ def main() -> None:
         "run_name": run_name,
         "created_at": datetime.now().isoformat(),
         "videos_path": videos_path.as_posix(),
+        "prepared_videos_path": prepared_videos_path.as_posix(),
         "source_videos_path": source_videos_path.as_posix(),
         "sequence_mode": args.sequence_mode,
         "combined_from_windows": bool(prep_meta.get("combined")),
         "source_window_count": int(prep_meta.get("source_window_count", 0)),
+        "chunked_input": bool(chunk_meta.get("chunked")),
+        "chunk_seconds": chunk_meta.get("chunk_seconds"),
+        "chunk_frames": chunk_meta.get("chunk_frames"),
+        "chunk_manifest": chunk_meta.get("chunk_manifest"),
         "mode": args.mode,
         "dimensions": dimensions,
         "input_videos": input_video_count,

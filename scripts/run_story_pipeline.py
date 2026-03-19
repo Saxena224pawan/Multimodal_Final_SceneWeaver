@@ -783,10 +783,17 @@ def _resolve_selected_local_model_path(
     return None
 
 
+def _safe_path_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
 def _first_existing_path(paths: List[str]) -> Optional[str]:
     for raw_path in paths:
         path = Path(raw_path)
-        if path.exists():
+        if _safe_path_exists(path):
             return path.as_posix()
     return None
 
@@ -794,7 +801,7 @@ def _first_existing_path(paths: List[str]) -> Optional[str]:
 def _first_existing_diffusers_model_path(paths: List[str]) -> Optional[str]:
     for raw_path in paths:
         path = Path(raw_path)
-        if path.exists() and (path / "model_index.json").exists():
+        if _safe_path_exists(path) and _safe_path_exists(path / "model_index.json"):
             return path.as_posix()
     return None
 
@@ -805,7 +812,7 @@ def _is_remote_model_ref(value: Optional[str]) -> bool:
     candidate = value.strip()
     if candidate.startswith(("/", "./", "../")):
         return False
-    return not Path(candidate).exists()
+    return not _safe_path_exists(Path(candidate))
 
 
 def _load_reference_images(image_paths: List[str], width: int, height: int) -> List[Any]:
@@ -908,6 +915,19 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Enable stochastic sampling in director LLM generation.",
+    )
+    parser.add_argument(
+        "--shot_plan_defaults",
+        type=str,
+        default="cinematic",
+        choices=["cinematic", "docu", "action"],
+        help="Default shot-plan preset used when director output omits fields.",
+    )
+    parser.add_argument(
+        "--shot_plan_enforce",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Inject shot-plan constraints into generation prompts.",
     )
 
     parser.add_argument(
@@ -1266,6 +1286,7 @@ def main() -> None:
             temperature=args.director_temperature,
             max_new_tokens=args.director_max_new_tokens,
             do_sample=bool(args.director_do_sample),
+            shot_plan_defaults=args.shot_plan_defaults,
         ),
         window_seconds=args.window_seconds,
     )

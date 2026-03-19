@@ -69,16 +69,36 @@ class SceneDirector:
                 "transformers is required to run SceneDirector with --director_model_id."
             ) from exc
         self._torch = torch
-        self._tokenizer = AutoTokenizer.from_pretrained(self.config.model_id)
+        try:
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                self.config.model_id,
+                trust_remote_code=True,
+            )
+        except ValueError as exc:
+            if "Qwen2Tokenizer" in str(exc):
+                raise ValueError(
+                    "Qwen2 tokenizer is unavailable in this environment. "
+                    "Upgrade transformers/tokenizers (e.g. transformers>=4.41, tokenizers>=0.19) "
+                    "or use a compatible director model."
+                ) from exc
+            raise
         if self._tokenizer.pad_token_id is None and self._tokenizer.eos_token_id is not None:
             self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
 
-        self._model = AutoModelForCausalLM.from_pretrained(self.config.model_id)
+        self._model = AutoModelForCausalLM.from_pretrained(
+            self.config.model_id,
+            trust_remote_code=True,
+        )
         if torch.cuda.is_available():
             self._model.to("cuda")
         self._model.eval()
 
-    def plan_windows(self, storyline: str, total_minutes: float) -> List[SceneWindow]:
+    def plan_windows(
+        self,
+        storyline: str,
+        total_minutes: float,
+        beats_override: Optional[List[Any]] = None,
+    ) -> List[SceneWindow]:
         window_count = max(1, math.ceil((total_minutes * 60) / self.window_seconds))
 
         window_specs: List[Dict[str, Any]]
@@ -127,16 +147,10 @@ class SceneDirector:
         storyline: str,
         window: SceneWindow,
         previous_prompt: str,
-<<<<<<< Updated upstream
-        memory_feedback: Optional[Dict[str, Any]],
-    ) -> str:
-        if self._model is None or self._tokenizer is None or self._torch is None:
-            return self._heuristic_refine_prompt(window, previous_prompt, memory_feedback)
-=======
         previous_scene_conversation: str = "",
         memory_feedback: Optional[Dict[str, Any]] = None,
     ) -> PromptBundle:
-        if self._generator is None:
+        if self._model is None or self._tokenizer is None or self._torch is None:
             return self._heuristic_refine_prompt(
                 storyline,
                 window,
@@ -144,7 +158,6 @@ class SceneDirector:
                 previous_scene_conversation,
                 memory_feedback,
             )
->>>>>>> Stashed changes
 
         compact_prev = self._compact_previous_prompt(previous_prompt)
         compact_storyline = self._compact_storyline(storyline)

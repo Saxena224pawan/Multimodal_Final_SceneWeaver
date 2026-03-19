@@ -3,11 +3,16 @@
 #SBATCH --output=slurm_logs/vbench_cont_%j.out
 #SBATCH --error=slurm_logs/vbench_cont_%j.err
 #SBATCH --time=04:00:00
-#SBATCH --partition=a100
-#SBATCH --gres=gpu:a100:1
+#SBATCH --partition=a40
+#SBATCH --gres=gpu:a40:1
 #SBATCH --cpus-per-task=8
 
 set -euo pipefail
+
+COMMON_SLURM_ROOT="${COMMON_SLURM_ROOT:-${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}}}"
+COMMON_SLURM_SH="${COMMON_SLURM_ROOT}/slurm_common.sh"
+# shellcheck source=./slurm_common.sh
+source "${COMMON_SLURM_SH}"
 
 # Keep nounset-safe default expected by some cluster profiles.
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
@@ -17,12 +22,12 @@ PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 
 ENV_PATH="${ENV_PATH:-}"
 VENV_PATH="${VENV_PATH:-}"
-DEFAULT_ENV_PATH="${DEFAULT_ENV_PATH:-sceneweaver_runtime}"
+DEFAULT_ENV_PATH="${DEFAULT_ENV_PATH:-${SCENEWEAVER_DEFAULT_ENV}}"
 
-CONDA_SH="${CONDA_SH:-/apps/python/3.12-conda/etc/profile.d/conda.sh}"
+CONDA_SH="${CONDA_SH:-${SCENEWEAVER_CONDA_SH}}"
 USE_MODULES="${USE_MODULES:-0}"
-PYTHON_MODULE="${PYTHON_MODULE:-python/3.12-conda}"
-CUDA_MODULE="${CUDA_MODULE:-cuda/12.4.1}"
+PYTHON_MODULE="${PYTHON_MODULE:-${SCENEWEAVER_PYTHON_MODULE}}"
+CUDA_MODULE="${CUDA_MODULE:-${SCENEWEAVER_CUDA_MODULE}}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 
 VBENCH_BIN="${VBENCH_BIN:-vbench}"
@@ -31,11 +36,13 @@ INSTALL_VBENCH="${INSTALL_VBENCH:-1}"
 UPGRADE_PIP="${UPGRADE_PIP:-0}"
 VBENCH_EXTRA_PIP_PACKAGES="${VBENCH_EXTRA_PIP_PACKAGES:-setuptools==80.9.0}"
 USE_PROXY="${USE_PROXY:-1}"
-PROXY_URL="${PROXY_URL:-http://proxy:80}"
-NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,::1}"
+PROXY_URL="${PROXY_URL:-${SCENEWEAVER_PROXY_URL}}"
+NO_PROXY="${NO_PROXY:-${SCENEWEAVER_NO_PROXY}}"
 MODE="${MODE:-custom_input}"
 SEQUENCE_MODE="${SEQUENCE_MODE:-concat_windows}"
 DIMENSIONS="${DIMENSIONS:-subject_consistency,background_consistency,motion_smoothness,temporal_flickering}"
+CHUNK_SECONDS="${CHUNK_SECONDS:-}"
+CHUNK_FRAMES="${CHUNK_FRAMES:-}"
 SEQUENCE_FALLBACK_PIP_PACKAGES="${SEQUENCE_FALLBACK_PIP_PACKAGES:-imageio imageio-ffmpeg}"
 NGPUS="${NGPUS:-1}"
 VIDEOS_PATH="${VIDEOS_PATH:-}"
@@ -152,10 +159,26 @@ if [ "${DRY_RUN}" = "0" ] && [ "${SEQUENCE_MODE}" = "concat_windows" ] && ! comm
   fi
 fi
 
+if [ "${DRY_RUN}" = "0" ] && { [ -n "${CHUNK_SECONDS}" ] || [ -n "${CHUNK_FRAMES}" ]; }; then
+  if ! "${PYTHON_BIN}" -c "import imageio, imageio_ffmpeg" >/dev/null 2>&1; then
+    echo "Chunked evaluation requested; installing Python chunking deps: ${SEQUENCE_FALLBACK_PIP_PACKAGES}"
+    # shellcheck disable=SC2206
+    SEQ_ARR=(${SEQUENCE_FALLBACK_PIP_PACKAGES})
+    "${PYTHON_BIN}" -m pip install --upgrade "${SEQ_ARR[@]}"
+  fi
+fi
+
 if [ "${DRY_RUN}" = "0" ] && [ "${SEQUENCE_MODE}" = "concat_windows" ]; then
   if ! command -v ffmpeg >/dev/null 2>&1 && ! "${PYTHON_BIN}" -c "import imageio, imageio_ffmpeg" >/dev/null 2>&1; then
     echo "ERROR: concat_windows requires either ffmpeg in PATH or Python packages imageio+imageio-ffmpeg."
     echo "Fallback: set SEQUENCE_MODE=per_clip."
+    exit 1
+  fi
+fi
+
+if [ "${DRY_RUN}" = "0" ] && { [ -n "${CHUNK_SECONDS}" ] || [ -n "${CHUNK_FRAMES}" ]; }; then
+  if ! "${PYTHON_BIN}" -c "import imageio, imageio_ffmpeg" >/dev/null 2>&1; then
+    echo "ERROR: chunked evaluation requires Python packages imageio+imageio-ffmpeg."
     exit 1
   fi
 fi
@@ -175,6 +198,12 @@ if [ -n "${VIDEOS_PATH}" ]; then
 fi
 if [ -n "${OUTPUTS_ROOT}" ]; then
   CMD+=(--outputs_root "${OUTPUTS_ROOT}")
+fi
+if [ -n "${CHUNK_SECONDS}" ]; then
+  CMD+=(--chunk_seconds "${CHUNK_SECONDS}")
+fi
+if [ -n "${CHUNK_FRAMES}" ]; then
+  CMD+=(--chunk_frames "${CHUNK_FRAMES}")
 fi
 if [ "${DRY_RUN}" = "1" ]; then
   CMD+=(--dry_run)
@@ -204,6 +233,8 @@ echo "NO_PROXY=${NO_PROXY}"
 echo "MODE=${MODE}"
 echo "SEQUENCE_MODE=${SEQUENCE_MODE}"
 echo "DIMENSIONS=${DIMENSIONS}"
+echo "CHUNK_SECONDS=${CHUNK_SECONDS}"
+echo "CHUNK_FRAMES=${CHUNK_FRAMES}"
 echo "SEQUENCE_FALLBACK_PIP_PACKAGES=${SEQUENCE_FALLBACK_PIP_PACKAGES}"
 echo "VIDEOS_PATH=${VIDEOS_PATH:-<latest story run auto>}"
 echo "OUTPUTS_ROOT=${OUTPUTS_ROOT}"

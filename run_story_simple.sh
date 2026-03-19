@@ -2,8 +2,8 @@
 #SBATCH --job-name=sceneweaver_simple
 #SBATCH --output=slurm_logs/sceneweaver_simple_%j.out
 #SBATCH --error=slurm_logs/sceneweaver_simple_%j.err
-#SBATCH --partition=a40
-#SBATCH --gres=gpu:a40:1
+#SBATCH --partition=a100
+#SBATCH --gres=gpu:a100:1
 #SBATCH --time=03:00:00
 #SBATCH --cpus-per-task=16
 
@@ -20,8 +20,10 @@ CONTINUITY_CANDIDATES="${CONTINUITY_CANDIDATES:-2}"
 RUN_STAMP="$(date +%Y%m%d_%H%M%S)"
 OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_ROOT}/outputs/story_run_${RUN_STAMP}}"
 
-source /apps/python/3.12-conda/etc/profile.d/conda.sh
-conda activate sceneweaver311
+CONDA_SH="${CONDA_SH:-${SCENEWEAVER_CONDA_SH}}"
+ENV_PATH="${ENV_PATH:-sceneweaver311}"
+source "${CONDA_SH}"
+conda activate "${ENV_PATH}"
 export PYTHONNOUSERSITE=1
 unset PYTHONPATH
 export PYTHONUNBUFFERED=1

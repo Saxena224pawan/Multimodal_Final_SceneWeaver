@@ -9,9 +9,14 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="${PROJECT_ROOT:-/home/hpc/v123be/v123be36/Multimodal_Final_SceneWeaver}"
-DATASET_ROOT="${DATASET_ROOT:-/home/vault/v123be/v123be36/PororoSV}"
-DINO_MODEL_ID="${DINO_MODEL_ID:-/home/vault/v123be/v123be36/facebook/dinov2-base}"
+COMMON_SLURM_ROOT="${COMMON_SLURM_ROOT:-${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}}}"
+COMMON_SLURM_SH="${COMMON_SLURM_ROOT}/slurm_common.sh"
+# shellcheck source=./slurm_common.sh
+source "${COMMON_SLURM_SH}"
+
+PROJECT_ROOT="${PROJECT_ROOT:-${SCENEWEAVER_PROJECT_ROOT}}"
+DATASET_ROOT="${DATASET_ROOT:-${SCENEWEAVER_VAULT_ROOT}/PororoSV}"
+DINO_MODEL_ID="${DINO_MODEL_ID:-${SCENEWEAVER_FACEBOOK_DINOV2_MODEL_DIR}}"
 CONTINUITY_ADAPTER_PATH="${CONTINUITY_ADAPTER_PATH:-${PROJECT_ROOT}/outputs/pororo_continuity_adapter.pt}"
 
 DEVICE="${DEVICE:-auto}"
@@ -29,8 +34,10 @@ PROJ_DIM="${PROJ_DIM:-512}"
 UNFREEZE_BACKBONE="${UNFREEZE_BACKBONE:-0}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
 
-source /apps/python/3.12-conda/etc/profile.d/conda.sh
-conda activate sceneweaver_runtime
+CONDA_SH="${CONDA_SH:-${SCENEWEAVER_CONDA_SH}}"
+ENV_PATH="${ENV_PATH:-${SCENEWEAVER_DEFAULT_ENV}}"
+source "${CONDA_SH}"
+conda activate "${ENV_PATH}"
 
 cd "${PROJECT_ROOT}"
 
