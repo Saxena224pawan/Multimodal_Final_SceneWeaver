@@ -2,10 +2,18 @@
 
 refinement:
   # Maximum number of iterations per window
-  max_iterations: 3
+  max_iterations: 5
 
   # Quality threshold to accept a window (0-1)
   quality_threshold: 0.70
+
+  # Stop when score changes are effectively flat across retries
+  convergence_patience: 2
+  convergence_tolerance: 0.015
+
+  # Tighten generation settings on each retry
+  progressive_tightening: true
+  tightening_strength: 0.8
 
   # Enable/disable individual agents
   enable_continuity: true

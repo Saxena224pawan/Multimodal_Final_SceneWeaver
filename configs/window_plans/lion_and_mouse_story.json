@@ -1,0 +1,44 @@
+[
+  {
+    "beat": "In the same sunny forest clearing, a powerful lion sleeps beneath a large tree while a tiny brown mouse scurries nearby through dry leaves.",
+    "scene_id": "lion_mouse_clearing",
+    "environment_anchor": "same sunny forest clearing, large tree, dry leaves, patches of grass, warm daylight, still woodland background",
+    "character_lock": "keep one golden lion and one tiny brown mouse consistent across all windows; keep the same forest clearing, same tree, same warm daylight; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Still in the same clearing, the mouse accidentally runs across the sleeping lion, and the lion wakes and traps the small mouse beneath a heavy paw.",
+    "scene_id": "lion_mouse_clearing",
+    "environment_anchor": "same sunny forest clearing, large tree, dry leaves, patches of grass, warm daylight, still woodland background",
+    "character_lock": "keep one golden lion and one tiny brown mouse consistent across all windows; keep the same forest clearing and tree; show the lion clearly awake and the mouse frightened but unharmed; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Without changing the setting, the mouse pleads for mercy and the lion relaxes, lifting its paw and letting the mouse run free.",
+    "scene_id": "lion_mouse_clearing",
+    "environment_anchor": "same sunny forest clearing, large tree, dry leaves, patches of grass, warm daylight, still woodland background",
+    "character_lock": "keep one golden lion and one tiny brown mouse consistent across all windows; keep the same forest clearing and tree; show the lion becoming calm and merciful; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Later in the same forest area, the lion becomes caught in a hunter net hanging low between branches, struggling but unable to escape.",
+    "scene_id": "lion_mouse_clearing",
+    "environment_anchor": "same sunny forest clearing, large tree, dry leaves, patches of grass, warm daylight, still woodland background",
+    "character_lock": "keep one golden lion and one tiny brown mouse consistent across all windows; keep the same forest clearing and tree; show a rope net trapping the lion; no hunters visible, no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "In the same background, the mouse returns, climbs onto the net, and gnaws through the ropes while the lion waits hopefully.",
+    "scene_id": "lion_mouse_clearing",
+    "environment_anchor": "same sunny forest clearing, large tree, dry leaves, patches of grass, warm daylight, still woodland background",
+    "character_lock": "keep one golden lion and one tiny brown mouse consistent across all windows; keep the same clearing and tree; show broken rope strands and the mouse actively helping; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Still in the same clearing, the lion stands free again and looks gratefully at the mouse, both safe under the warm forest light.",
+    "scene_id": "lion_mouse_clearing",
+    "environment_anchor": "same sunny forest clearing, large tree, dry leaves, patches of grass, warm daylight, still woodland background",
+    "character_lock": "keep one golden lion and one tiny brown mouse consistent across all windows; keep the same forest clearing and tree; show the torn net nearby and a grateful peaceful ending; no humans, no extra animals, no background change",
+    "scene_change": false
+  }
+]

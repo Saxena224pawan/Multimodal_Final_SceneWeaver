@@ -2,7 +2,7 @@
 
 import json
 from typing import Any, List, Optional
-from ..agent_base import Agent, AgentResult
+from ..agent_base import Agent, AgentResult, extract_first_json_object
 
 
 class StorybeatsChecker(Agent):
@@ -69,15 +69,8 @@ Respond ONLY with JSON:
             # Call LLM
             response = self.llm_model.generate(eval_prompt)
 
-            # Parse JSON response
-            # Try to extract JSON from response (may contain extra text)
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                json_str = response[json_start:json_end]
-                result_dict = json.loads(json_str)
-            else:
-                # Fallback if no JSON found
+            result_dict = extract_first_json_object(response)
+            if result_dict is None:
                 result_dict = {
                     "beat_adherence": 70,
                     "character_clarity": 70,

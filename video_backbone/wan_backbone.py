@@ -75,7 +75,7 @@ class WanBackbone:
             for p in ("image", "last_image", "conditioning_frames", "video", "frames", "init_image")
         )
 
-<<<<<<< Updated upstream
+    def _validate_runtime_dependencies(self):
         try:
             import torch
         except ImportError as exc:
@@ -85,28 +85,40 @@ class WanBackbone:
                 "Example: pip install -U 'diffusers>=0.30' transformers accelerate"
             ) from exc
         try:
-            from diffusers import AutoPipelineForText2Video as PipelineClass
-        except Exception:
-            try:
-                # Fallback for diffusers builds that do not expose AutoPipelineForText2Video.
-                from diffusers import DiffusionPipeline as PipelineClass
-            except Exception as exc:
-                detail = str(exc)
-                xformers_hint = ""
-                if "xformers" in detail.lower() or "jitcallable._set_src" in detail.lower():
-                    xformers_hint = (
-                        " Detected an xformers runtime mismatch. "
-                        "Uninstall xformers or install a build matching this torch/cuda runtime."
-                    )
-                raise ImportError(
-                    "Could not import a usable diffusers pipeline class. "
-                    "Expected AutoPipelineForText2Video or DiffusionPipeline."
-                    f"{xformers_hint}"
-                ) from exc
-=======
+            from diffusers import WanImageToVideoPipeline
+        except Exception as exc:
+            detail = str(exc)
+            xformers_hint = ""
+            if "xformers" in detail.lower() or "jitcallable._set_src" in detail.lower():
+                xformers_hint = (
+                    " Detected an xformers runtime mismatch. "
+                    "Uninstall xformers or install a build matching this torch/cuda runtime."
+                )
+            raise ImportError(
+                "Could not import WanImageToVideoPipeline from diffusers." f"{xformers_hint}"
+            ) from exc
+        return torch, WanImageToVideoPipeline
+
+    def load(self):
+        torch, WanImageToVideoPipeline = self._validate_runtime_dependencies()
+
+        torch_dtype = self._get_torch_dtype(torch)
+        pipe = WanImageToVideoPipeline.from_pretrained(
+            self.config.model_id,
+            torch_dtype=torch_dtype,
+        )
+
+        target_device = self._resolve_device(torch)
+        if self.config.enable_cpu_offload and target_device == "cuda":
+            pipe.enable_model_cpu_offload()
+        else:
+            pipe.to(target_device)
+
+        self.pipeline = pipe
+        self._introspect_pipeline_call()
+
     def _to_pil(self, frame: Any, width: int, height: int):
         from PIL import Image
->>>>>>> Stashed changes
 
         img = Image.fromarray(self._frame_to_uint8(frame))
         if img.size != (width, height):
@@ -320,25 +332,6 @@ class WanBackbone:
                 return "mps"
             return "cpu"
         return normalized
-
-    def load(self):
-        import torch
-        from diffusers import WanImageToVideoPipeline
-
-        torch_dtype = self._get_torch_dtype(torch)
-        pipe = WanImageToVideoPipeline.from_pretrained(
-            self.config.model_id,
-            torch_dtype=torch_dtype,
-        )
-
-        target_device = self._resolve_device(torch)
-        if self.config.enable_cpu_offload and target_device == "cuda":
-            pipe.enable_model_cpu_offload()
-        else:
-            pipe.to(target_device)
-
-        self.pipeline = pipe
-        self._introspect_pipeline_call()
 
     def generate_clip(
         self,

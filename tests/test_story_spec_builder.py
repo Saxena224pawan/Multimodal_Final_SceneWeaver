@@ -26,4 +26,10 @@ def test_story_spec_builder_heuristic_mode_produces_valid_spec() -> None:
     assert len(spec["beats"]) >= 3
     assert "visual_features" in spec["characters"][0]
     assert spec["characters"][0]["size_bucket"] == "medium"
+    assert "start_state" in spec["characters"][0]
+    assert "end_state" in spec["characters"][0]
     assert "size_bucket" in spec["objects"][0]
+    assert "story_phase" in spec["beats"][0]
+    assert "character_progression" in spec["beats"][0]
+    assert "relationship_dynamic" in spec["beats"][0]
+    assert "visible_change" in spec["beats"][0]

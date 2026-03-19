@@ -2,7 +2,7 @@
 
 import json
 from typing import Any, List, Optional
-from ..agent_base import Agent, AgentResult
+from ..agent_base import Agent, AgentResult, extract_first_json_object
 
 
 class PhysicsValidator(Agent):
@@ -64,13 +64,8 @@ Respond ONLY with JSON:
         try:
             response = self.llm_model.generate(eval_prompt)
 
-            # Extract JSON
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                json_str = response[json_start:json_end]
-                result_dict = json.loads(json_str)
-            else:
+            result_dict = extract_first_json_object(response)
+            if result_dict is None:
                 result_dict = {
                     "teleportation": 80,
                     "gravity": 80,

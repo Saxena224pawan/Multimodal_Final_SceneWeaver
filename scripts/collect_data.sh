@@ -4,6 +4,8 @@
 
 set -e
 
+PYTHON_BIN=${PYTHON_BIN:-python}
+
 # Configuration
 NUM_STORIES=${1:-10}
 MAX_ITERATIONS=${2:-3}
@@ -64,7 +66,7 @@ for i in $(seq 1 $NUM_STORIES); do
     echo ""
 
     # Run pipeline
-    if python scripts/run_story_pipeline_with_agents.py \
+    if "$PYTHON_BIN" scripts/run_story_pipeline_with_agents.py \
         --storyline "$STORY_FILE" \
         --output-dir "$RUN_DIR" \
         --max-iterations "$MAX_ITERATIONS" \
@@ -73,7 +75,7 @@ for i in $(seq 1 $NUM_STORIES); do
         # Evaluate run
         echo ""
         echo "Evaluating run..."
-        python evaluation.py "$RUN_DIR" > "$RUN_DIR/evaluation_output.log" 2>&1
+        "$PYTHON_BIN" evaluation.py "$RUN_DIR" > "$RUN_DIR/evaluation_output.log" 2>&1
 
         # Extract results
         if [ -f "$RUN_DIR/convergence_report.json" ]; then

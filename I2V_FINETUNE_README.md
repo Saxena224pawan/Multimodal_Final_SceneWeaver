@@ -62,7 +62,7 @@ python scripts/finetune_i2v_model.py \
 ### 3. Test Fine-tuned Model
 ```bash
 # Test with the fine-tuned model
-python run_story_simple.sh \
+bash run_story_simple.sh \
     --video_model_id outputs/i2v_finetune_hdvg \
     --test_prompt "A cat playing in a garden"
 ```

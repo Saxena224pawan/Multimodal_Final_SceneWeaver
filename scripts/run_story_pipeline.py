@@ -79,6 +79,7 @@ def build_generation_prompt(
     previous_scene_conversation: str = "",
     conversation_progress_instruction: str = "",
     story_progress_instruction: str = "",
+    dialogue_scene: bool = False,
     repair_hint: str = "",
     shot_plan: Optional[ShotPlan] = None,
     shot_plan_enforce: bool = True,
@@ -110,20 +111,26 @@ def build_generation_prompt(
     parts.append(f"Current beat: {beat.strip()}")
     if story_state_hint.strip():
         parts.append(f"Story state: {story_state_hint.strip()}")
-    if previous_scene_conversation.strip():
+    if dialogue_scene and previous_scene_conversation.strip():
         parts.append(f"Previous conversation context: {previous_scene_conversation.strip()}")
     if scene_conversation.strip():
-        parts.append(f"Scene conversation cue: {scene_conversation.strip()}")
-        parts.append(
-            "Show natural speaking, listening, reacting, or arguing body language that matches this conversation cue. No on-screen subtitles or text."
-        )
-        parts.append(
-            "Keep the speakers in one shared physical setting with stable background landmarks, consistent seating or standing positions, and readable face-to-face eyelines."
-        )
-        parts.append(
-            "Favor stable conversational coverage such as a medium two-shot or restrained over-the-shoulder continuation unless the beat clearly requires a different framing."
-        )
-    if conversation_progress_instruction.strip():
+        cue_label = "Scene conversation cue" if dialogue_scene else "Scene emotional cue"
+        parts.append(f"{cue_label}: {scene_conversation.strip()}")
+        if dialogue_scene:
+            parts.append(
+                "Show natural speaking, listening, reacting, or arguing body language that matches this conversation cue. No on-screen subtitles or text."
+            )
+            parts.append(
+                "Keep the speakers in one shared physical setting with stable background landmarks, consistent seating or standing positions, and readable face-to-face eyelines."
+            )
+            parts.append(
+                "Favor stable conversational coverage such as a medium two-shot or restrained over-the-shoulder continuation unless the beat clearly requires a different framing."
+            )
+        else:
+            parts.append(
+                "Treat this cue as a solo performance or internal reaction. Do not invent an extra speaker, subtitles, or an off-screen conversation."
+            )
+    if dialogue_scene and conversation_progress_instruction.strip():
         parts.append(f"Conversation progression instruction: {conversation_progress_instruction.strip()}")
     if story_progress_instruction.strip():
         parts.append(f"Story progression instruction: {story_progress_instruction.strip()}")
@@ -137,6 +144,9 @@ def build_generation_prompt(
     elif current_environment_anchor.strip():
         parts.append(
             "Preserve location, background layout, lighting, weather, time-of-day, and camera viewpoint from the environment anchor."
+        )
+        parts.append(
+            "Lock the same background landmarks, prop placement, horizon line, and lighting direction across consecutive windows. Do not replace or relocate the main background objects."
         )
     parts.append(
         "Strictly follow the current beat and keep the same characters, identities, and scene context. "
@@ -248,6 +258,22 @@ def _window_scene_change(window: Any) -> Optional[bool]:
     return value if isinstance(value, bool) else None
 
 
+def _window_story_phase(window: Any) -> str:
+    return " ".join(str(getattr(window, "story_phase", "") or "").split()).strip()
+
+
+def _window_character_progression(window: Any) -> str:
+    return " ".join(str(getattr(window, "character_progression", "") or "").split()).strip()
+
+
+def _window_relationship_dynamic(window: Any) -> str:
+    return " ".join(str(getattr(window, "relationship_dynamic", "") or "").split()).strip()
+
+
+def _window_visible_change(window: Any) -> str:
+    return " ".join(str(getattr(window, "visible_change", "") or "").split()).strip()
+
+
 def _same_scene_as_previous(previous_window: Optional[Any], current_window: Any) -> bool:
     if previous_window is None:
         return False
@@ -322,6 +348,143 @@ def _normalize_beat_core(beat: str) -> str:
     return " ".join(text.split()).strip(" .")
 
 
+_LOCATION_NAME_TERMS = {
+    "Mountain",
+    "Mountains",
+    "Valley",
+    "Valleys",
+    "Forest",
+    "Forests",
+    "Ruins",
+    "Peak",
+    "Peaks",
+    "Path",
+    "Road",
+    "River",
+    "Lake",
+    "Sea",
+    "Ocean",
+    "Castle",
+    "Village",
+    "City",
+    "Temple",
+    "Tower",
+    "Desert",
+    "Cave",
+    "Caves",
+    "Kingdom",
+    "Courtyard",
+    "Station",
+    "Platform",
+    "Train",
+}
+
+
+_DIALOGUE_PARTICIPANT_MARKERS = (
+    " says ",
+    " ask ",
+    " asks ",
+    " tell ",
+    " tells ",
+    " reply ",
+    " replies ",
+    " respond ",
+    " responds ",
+    " answer ",
+    " answers ",
+    " shout ",
+    " shouts ",
+    " yell ",
+    " yells ",
+    " argue ",
+    " argues ",
+    " argues with ",
+    " speak ",
+    " speaks ",
+    " talk ",
+    " talks ",
+    " debate ",
+    " debates ",
+    " negotiate ",
+    " negotiates ",
+    " conversation ",
+    " dialogue ",
+    " exchange ",
+)
+
+
+_SELF_TALK_MARKERS = (
+    " to herself ",
+    " to himself ",
+    " to themself ",
+    " to myself ",
+    " under her breath ",
+    " under his breath ",
+    " under their breath ",
+    " quietly to herself ",
+    " quietly to himself ",
+    " mutters to herself ",
+    " mutters to himself ",
+    " whispers to herself ",
+    " whispers to himself ",
+    " whispers to themself ",
+    " alone ",
+    " internal monologue ",
+    " inner monologue ",
+)
+
+
+def _candidate_is_location_name(token: str) -> bool:
+    words = [word for word in str(token or "").split() if word]
+    return any(word in _LOCATION_NAME_TERMS for word in words)
+
+
+def _normalized_lower(text: str) -> str:
+    normalized = re.sub(r"\s+", " ", str(text or "").lower()).strip()
+    return f" {normalized} "
+
+
+def _is_self_talk_cue(text: str) -> bool:
+    lowered = _normalized_lower(text)
+    return any(marker in lowered for marker in _SELF_TALK_MARKERS)
+
+
+def _should_use_dialogue_staging(
+    scene_conversation: str,
+    beat: str,
+    character_names: Optional[List[str]] = None,
+) -> bool:
+    if not str(scene_conversation or "").strip():
+        return False
+    if _is_self_talk_cue(scene_conversation) or _is_self_talk_cue(beat):
+        return False
+
+    resolved_names = [
+        str(name).strip()
+        for name in (character_names or [])
+        if str(name).strip() and str(name).strip().lower() != "protagonist"
+    ]
+    if len(resolved_names) >= 2:
+        return True
+
+    lowered = _normalized_lower(f"{scene_conversation} {beat}")
+    participant_markers = (
+        " another person ",
+        " another speaker ",
+        " both speakers ",
+        " two people ",
+        " back-and-forth ",
+        " each other ",
+        " one another ",
+        " conversation ",
+        " dialogue ",
+        " exchange ",
+        " responds while ",
+        " replies while ",
+    )
+    return any(marker in lowered for marker in participant_markers)
+
+
 def _story_progress_instruction(previous_beat: str, current_beat: str) -> str:
     if not previous_beat.strip():
         return "Establish the first beat clearly with a readable action and objective."
@@ -388,17 +551,121 @@ def _reference_strength_for_window(
     return min(max(strength, 0.62), 0.76)
 
 
+def _merge_negative_prompt_terms(base_negative_prompt: str, extra_terms: List[str]) -> str:
+    terms = [term.strip() for term in re.split(r",\s*", base_negative_prompt or "") if term.strip()]
+    normalized = {term.lower() for term in terms}
+    for term in extra_terms:
+        cleaned = str(term or "").strip()
+        if cleaned and cleaned.lower() not in normalized:
+            terms.append(cleaned)
+            normalized.add(cleaned.lower())
+    return ", ".join(terms)
+
+
+def _attempt_progress(attempt_idx: int, max_attempts: int) -> float:
+    if max_attempts <= 1:
+        return 0.0
+    return max(0.0, min(1.0, attempt_idx / max(1, max_attempts - 1)))
+
+
+def _tightened_retry_settings(
+    *,
+    base_guidance_scale: float,
+    base_negative_prompt: str,
+    base_reference_strength: float,
+    base_noise_blend_strength: float,
+    attempt_idx: int,
+    max_attempts: int,
+    progressive_tightening: bool,
+    tightening_strength: float,
+) -> Dict[str, Any]:
+    progress = _attempt_progress(attempt_idx, max_attempts) if progressive_tightening else 0.0
+    strength = max(0.0, float(tightening_strength))
+    guidance_scale = min(14.0, max(0.0, float(base_guidance_scale) + (progress * strength * 1.25)))
+    reference_strength = min(0.95, max(0.0, float(base_reference_strength) + (progress * strength * 0.12)))
+    noise_blend_strength = max(0.0, float(base_noise_blend_strength))
+    if noise_blend_strength > 0.0:
+        noise_blend_strength = min(0.65, noise_blend_strength + (progress * strength * 0.06))
+
+    extra_terms: List[str] = []
+    repair_constraints: List[str] = []
+    if progress > 0.0:
+        extra_terms.extend([
+            "identity drift",
+            "background drift",
+            "beat confusion",
+            "unclear action",
+            "subject inconsistency",
+        ])
+        repair_constraints.append(
+            "Stronger retry pass: preserve exact character identity, environment layout, and readable beat progression."
+        )
+    if progress >= 0.45:
+        extra_terms.extend([
+            "pose reset",
+            "emotion reset",
+            "scene discontinuity",
+            "extra characters",
+            "duplicate subjects",
+        ])
+        repair_constraints.append(
+            "No pose reset, no emotion reset, no background drift, no extra subjects, and no weakened action clarity."
+        )
+    if progress >= 0.8:
+        extra_terms.extend([
+            "staging drift",
+            "prop inconsistency",
+            "weak eyelines",
+        ])
+        repair_constraints.append(
+            "Make the beat unmistakable on screen with cleaner staging, stronger eyelines, and tighter prop continuity."
+        )
+
+    return {
+        "attempt_progress": round(progress, 4),
+        "guidance_scale": round(guidance_scale, 4),
+        "reference_strength": round(reference_strength, 4),
+        "noise_blend_strength": round(noise_blend_strength, 4),
+        "negative_prompt": _merge_negative_prompt_terms(base_negative_prompt, extra_terms),
+        "repair_constraint": " ".join(repair_constraints).strip(),
+    }
+
+
+def _retry_convergence_status(
+    score_history: List[float],
+    *,
+    threshold: float,
+    patience: int,
+    tolerance: float,
+) -> tuple[bool, str]:
+    if not score_history:
+        return False, ""
+    latest = float(score_history[-1])
+    if latest >= float(threshold):
+        return True, "threshold_met"
+    if int(patience) <= 0 or len(score_history) < int(patience) + 1:
+        return False, ""
+    recent = [float(score) for score in score_history[-(int(patience) + 1) :]]
+    if max(recent) - min(recent) <= max(0.0, float(tolerance)):
+        return True, "score_plateau"
+    return False, ""
+
+
 def _combine_continuity_score(
     transition_similarity: Optional[float],
     environment_similarity: Optional[float],
+    style_similarity: Optional[float],
     transition_weight: float,
     environment_weight: float,
+    style_weight: float,
 ) -> Optional[float]:
     weighted_components = []
     if transition_similarity is not None and transition_weight > 0.0:
         weighted_components.append((transition_similarity, transition_weight))
     if environment_similarity is not None and environment_weight > 0.0:
         weighted_components.append((environment_similarity, environment_weight))
+    if style_similarity is not None and style_weight > 0.0:
+        weighted_components.append((style_similarity, style_weight))
     if not weighted_components:
         return None
     total_weight = sum(weight for _, weight in weighted_components)
@@ -462,6 +729,108 @@ def _estimate_clip_visual_quality(frames: List[Any], sample_count: int = 4) -> O
     return float(sum(scores) / len(scores))
 
 
+def _prepare_frame_style_array(frame: Any) -> Optional[Any]:
+    import numpy as np
+
+    arr = np.asarray(frame)
+    if arr.ndim == 4:
+        arr = arr[-1]
+    if arr.ndim == 3 and arr.shape[0] in (1, 2, 3, 4) and arr.shape[-1] not in (1, 2, 3, 4):
+        arr = np.transpose(arr, (1, 2, 0))
+    if arr.ndim not in (2, 3):
+        return None
+    arr = arr.astype(np.float32)
+    finite = arr[np.isfinite(arr)]
+    if finite.size == 0:
+        return None
+    min_val = float(finite.min())
+    max_val = float(finite.max())
+    if min_val >= 0.0 and max_val <= 1.0:
+        arr = arr * 255.0
+    elif min_val >= -1.0 and max_val <= 1.0:
+        arr = (arr + 1.0) * 127.5
+    return np.clip(arr, 0.0, 255.0)
+
+
+def _estimate_frame_style_signature(frame: Any) -> Optional[Dict[str, float]]:
+    import numpy as np
+
+    arr = _prepare_frame_style_array(frame)
+    if arr is None:
+        return None
+    if arr.ndim == 2:
+        rgb = np.stack([arr, arr, arr], axis=2)
+    else:
+        if arr.shape[2] == 1:
+            rgb = np.repeat(arr, 3, axis=2)
+        else:
+            rgb = arr[..., :3]
+
+    gray = rgb.mean(axis=2)
+    mean_rgb = rgb.reshape(-1, 3).mean(axis=0)
+    brightness = float(gray.mean() / 255.0)
+    contrast = float(min(max(np.std(gray) / 64.0, 0.0), 1.0))
+    color_spread = float((max(mean_rgb) - min(mean_rgb)) / 255.0)
+    channel_delta = np.abs(rgb - gray[..., None]).mean(axis=2)
+    saturation = float(min(max(channel_delta.mean() / 85.0, 0.0), 1.0))
+    grad_x = np.abs(np.diff(gray, axis=1)).mean() if gray.shape[1] > 1 else 0.0
+    grad_y = np.abs(np.diff(gray, axis=0)).mean() if gray.shape[0] > 1 else 0.0
+    texture = float(min(max((grad_x + grad_y) / 26.0, 0.0), 1.0))
+    return {
+        "mean_r": float(mean_rgb[0] / 255.0),
+        "mean_g": float(mean_rgb[1] / 255.0),
+        "mean_b": float(mean_rgb[2] / 255.0),
+        "brightness": brightness,
+        "contrast": contrast,
+        "saturation": saturation,
+        "color_spread": color_spread,
+        "texture": texture,
+    }
+
+
+def _estimate_clip_style_signature(frames: List[Any], sample_count: int = 4) -> Optional[Dict[str, float]]:
+    if frames is None:
+        return None
+    try:
+        total = len(frames)
+    except TypeError:
+        return None
+    if total <= 0:
+        return None
+    if total <= sample_count:
+        sampled = list(frames)
+    else:
+        step = max(1, total // sample_count)
+        sampled = list(frames)[::step][:sample_count]
+    if not sampled:
+        return None
+
+    signatures = [sig for sig in (_estimate_frame_style_signature(frame) for frame in sampled) if sig is not None]
+    if not signatures:
+        return None
+
+    keys = signatures[0].keys()
+    return {key: float(sum(sig[key] for sig in signatures) / len(signatures)) for key in keys}
+
+
+def _style_signature_similarity(
+    reference_signature: Optional[Dict[str, float]],
+    candidate_signature: Optional[Dict[str, float]],
+) -> Optional[float]:
+    if not reference_signature or not candidate_signature:
+        return None
+    keys = [
+        key
+        for key in reference_signature.keys()
+        if key in candidate_signature and reference_signature.get(key) is not None and candidate_signature.get(key) is not None
+    ]
+    if not keys:
+        return None
+    diffs = [abs(float(reference_signature[key]) - float(candidate_signature[key])) for key in keys]
+    avg_diff = sum(diffs) / len(diffs)
+    return float(min(max(1.0 - avg_diff, 0.0), 1.0))
+
+
 def _visual_quality_feedback(visual_quality_score: Optional[float]) -> str:
     if visual_quality_score is None or visual_quality_score >= 0.58:
         return ""
@@ -473,9 +842,18 @@ def _visual_quality_feedback(visual_quality_score: Optional[float]) -> str:
     return "Preserve crisp facial detail and cleaner edges. Keep the continuation anchor gentle instead of over-copying noisy texture."
 
 
+def _style_similarity_feedback(style_similarity: Optional[float]) -> str:
+    if style_similarity is None or style_similarity >= 0.78:
+        return ""
+    if style_similarity >= 0.64:
+        return "Keep the same overall visual style, palette, lighting mood, and texture level as the previous window."
+    return "Visual style drifted badly; restore the same palette, lighting mood, contrast, and rendering texture from the earlier window."
+
+
 def _build_story_state_hint(windows: List[Any], pos: int) -> str:
     previous_beat = windows[pos - 1].beat if pos > 0 else ""
-    current_beat = windows[pos].beat
+    current_window = windows[pos]
+    current_beat = current_window.beat
     next_beat = windows[pos + 1].beat if pos + 1 < len(windows) else ""
     future_beat = windows[pos + 2].beat if pos + 2 < len(windows) else ""
 
@@ -483,6 +861,18 @@ def _build_story_state_hint(windows: List[Any], pos: int) -> str:
     if previous_beat:
         hints.append(f"Completed previous beat: {previous_beat}.")
     hints.append(f"Required now: {current_beat}.")
+    story_phase = _window_story_phase(current_window)
+    if story_phase:
+        hints.append(f"Story phase now: {story_phase}.")
+    character_progression = _window_character_progression(current_window)
+    if character_progression:
+        hints.append(f"Character progression now: {character_progression}.")
+    relationship_dynamic = _window_relationship_dynamic(current_window)
+    if relationship_dynamic:
+        hints.append(f"Relationship dynamic now: {relationship_dynamic}.")
+    visible_change = _window_visible_change(current_window)
+    if visible_change:
+        hints.append(f"Visible change required: {visible_change}.")
     if previous_beat:
         if _normalize_beat_core(previous_beat) != _normalize_beat_core(current_beat):
             hints.append("Visibly change the action from the previous window; do not hold on the earlier state.")
@@ -517,14 +907,37 @@ def _infer_emotion(beat_text: str) -> str:
 
 def _extract_character_names(storyline: str, beat_text: str) -> List[str]:
     source = f"{storyline} {beat_text}"
-    candidates = re.findall(r"\b[A-Z][a-z]{2,}\b", source)
-    deny = {"The", "This", "That", "When", "Then", "With", "From", "Into", "Over", "After", "Before", "Start", "Continue", "Resolve", "Show"}
+    candidates = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b", source)
+    deny = {
+        "The",
+        "This",
+        "That",
+        "When",
+        "Then",
+        "With",
+        "From",
+        "Into",
+        "Over",
+        "After",
+        "Before",
+        "Start",
+        "Continue",
+        "Resolve",
+        "Show",
+        "Current",
+        "Previous",
+        "Story",
+        "Emotion",
+        "Objective",
+    }
     names: List[str] = []
     for token in candidates:
-        if token in deny:
+        token = re.sub(r"^(?:At|In|On|Back|Inside|Outside|Later|Earlier|From)\s+", "", token).strip()
+        if len(token) <= 2 or token in deny or _candidate_is_location_name(token):
             continue
-        if token not in names:
-            names.append(token)
+        if any(token == existing or token in existing or existing in token for existing in names):
+            continue
+        names.append(token)
         if len(names) >= 2:
             break
     if names:
@@ -548,6 +961,10 @@ def _build_scene_plan_like_payload(storyline: str, windows: List[Any], window_se
         if anchor_key:
             last_anchor = anchor_key
 
+        story_phase = _window_story_phase(window)
+        character_progression = _window_character_progression(window)
+        relationship_dynamic = _window_relationship_dynamic(window)
+        visible_change = _window_visible_change(window)
         row = {
             "window_id": window_id,
             "window_index": int(window.index),
@@ -555,6 +972,10 @@ def _build_scene_plan_like_payload(storyline: str, windows: List[Any], window_se
             "scene_id": explicit_scene_id or anchor_key,
             "scene_objective": beat_text.rstrip("."),
             "emotion": _infer_emotion(beat_text),
+            "story_phase": story_phase,
+            "character_progression": character_progression,
+            "relationship_dynamic": relationship_dynamic,
+            "visible_change": visible_change,
             "character_names": _extract_character_names(storyline, beat_text),
             "continuity_anchor": {
                 "world_anchor": anchor_key or "main_location",
@@ -562,7 +983,11 @@ def _build_scene_plan_like_payload(storyline: str, windows: List[Any], window_se
                 "previous_window_id": previous_window_id,
             },
             "expected_caption": (
-                f"{beat_text}. Objective: {beat_text.rstrip('.')}. "
+                f"{beat_text}. "
+                f"Story phase: {story_phase or 'current progression'}. "
+                f"Character progression: {character_progression or 'show the character changing under pressure'}. "
+                f"Relationship dynamic: {relationship_dynamic or 'carry the emotional tension through behavior'}. "
+                f"Visible change: {visible_change or 'show a clear shift in pose, spacing, or prop handling'}. "
                 f"Progress within beat: {(pos % 3 + 1) / 3:.2f}."
             ),
             "beat_step": (pos % 3) + 1,
@@ -576,6 +1001,7 @@ def _build_scene_plan_like_payload(storyline: str, windows: List[Any], window_se
         "story_id": _slugify(story_title, fallback="story"),
         "title": story_title,
         "window_seconds": int(window_seconds),
+        "runtime_seconds": int(len(window_rows) * window_seconds),
         "total_windows": len(window_rows),
         "windows": window_rows,
     }
@@ -886,8 +1312,38 @@ def main() -> None:
         default="outputs/pipeline/model_links.json",
         help="Linked model manifest path (from scripts/00_pipeline/01_link_models.py).",
     )
-    parser.add_argument("--total_minutes", type=float, default=0.5, help="Target video length in minutes.")
+    parser.add_argument(
+        "--total_minutes",
+        type=float,
+        default=0.5,
+        help="Target video length in minutes when using fixed window planning.",
+    )
     parser.add_argument("--window_seconds", type=int, default=10, help="Seconds per clip window.")
+    parser.add_argument(
+        "--window_count_mode",
+        type=str,
+        default="dynamic",
+        choices=["dynamic", "fixed"],
+        help="How to decide the number of windows: dynamic uses story length, fixed uses total_minutes/window_seconds.",
+    )
+    parser.add_argument(
+        "--target_words_per_window",
+        type=int,
+        default=28,
+        help="Story-length pacing target used only in dynamic window planning.",
+    )
+    parser.add_argument(
+        "--min_dynamic_windows",
+        type=int,
+        default=1,
+        help="Minimum generated window count when using dynamic window planning.",
+    )
+    parser.add_argument(
+        "--max_dynamic_windows",
+        type=int,
+        default=24,
+        help="Maximum generated window count when using dynamic window planning.",
+    )
     parser.add_argument(
         "--window_plan_json",
         type=str,
@@ -908,6 +1364,19 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Enable stochastic sampling in director LLM generation.",
+    )
+    parser.add_argument(
+        "--shot_plan_defaults",
+        type=str,
+        default="cinematic",
+        choices=["cinematic", "docu", "action"],
+        help="Default shot-plan preset for the scene director when planning camera coverage.",
+    )
+    parser.add_argument(
+        "--shot_plan_enforce",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Whether to explicitly inject the director shot plan into the generation prompt.",
     )
 
     parser.add_argument(
@@ -1067,8 +1536,32 @@ def main() -> None:
     parser.add_argument(
         "--continuity_regen_attempts",
         type=int,
+        default=4,
+        help="Maximum retry iterations per window while tightening constraints until convergence.",
+    )
+    parser.add_argument(
+        "--continuity_convergence_patience",
+        type=int,
         default=2,
-        help="Max candidate-generation attempts per window when critic score is below threshold.",
+        help="Stop early when retry scores plateau for this many consecutive iterations.",
+    )
+    parser.add_argument(
+        "--continuity_convergence_tolerance",
+        type=float,
+        default=0.015,
+        help="Tolerance used to detect retry-score convergence plateaus.",
+    )
+    parser.add_argument(
+        "--progressive_tightening",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Tighten guidance, continuity pressure, and repair constraints on each retry iteration.",
+    )
+    parser.add_argument(
+        "--tightening_strength",
+        type=float,
+        default=0.8,
+        help="How aggressively retries strengthen guidance and continuity constraints.",
     )
     parser.add_argument(
         "--critic_story_weight",
@@ -1141,6 +1634,12 @@ def main() -> None:
         default=0.12,
         help="Weight for a lightweight visual-quality heuristic when ranking candidates to reduce recursive drift.",
     )
+    parser.add_argument(
+        "--style_weight",
+        type=float,
+        default=0.18,
+        help="Weight for lightweight palette/lighting/style consistency when ranking candidates across windows.",
+    )
     args = parser.parse_args()
 
     if args.window_shard_count < 1:
@@ -1164,6 +1663,14 @@ def main() -> None:
         raise ValueError("--semantic_alignment_threshold must be between 0.0 and 1.0")
     if int(args.semantic_caption_sample_count) < 0:
         raise ValueError("--semantic_caption_sample_count must be >= 0")
+    if not 0.0 <= float(args.style_weight) <= 1.0:
+        raise ValueError("--style_weight must be between 0.0 and 1.0")
+    if int(args.continuity_convergence_patience) < 0:
+        raise ValueError("--continuity_convergence_patience must be >= 0")
+    if not 0.0 <= float(args.continuity_convergence_tolerance) <= 1.0:
+        raise ValueError("--continuity_convergence_tolerance must be between 0.0 and 1.0")
+    if float(args.tightening_strength) < 0.0:
+        raise ValueError("--tightening_strength must be >= 0.0")
 
     model_links_payload = load_model_links(Path(args.model_links))
     modules_payload = model_links_payload.get("modules", {}) if isinstance(model_links_payload, dict) else {}
@@ -1266,6 +1773,11 @@ def main() -> None:
             temperature=args.director_temperature,
             max_new_tokens=args.director_max_new_tokens,
             do_sample=bool(args.director_do_sample),
+            shot_plan_defaults=args.shot_plan_defaults,
+            window_count_mode=args.window_count_mode,
+            target_words_per_window=args.target_words_per_window,
+            min_dynamic_windows=args.min_dynamic_windows,
+            max_dynamic_windows=args.max_dynamic_windows,
         ),
         window_seconds=args.window_seconds,
     )
@@ -1275,6 +1787,12 @@ def main() -> None:
         storyline=args.storyline,
         total_minutes=args.total_minutes,
         beats_override=beats_override,
+    )
+    planned_runtime_seconds = len(windows) * args.window_seconds
+    window_count_source = "window_plan_json" if beats_override else args.window_count_mode
+    print(
+        f"[window-plan] source={window_count_source} windows={len(windows)} "
+        f"planned_runtime_seconds={planned_runtime_seconds} window_seconds={args.window_seconds}"
     )
 
     backbone = None
@@ -1330,6 +1848,7 @@ def main() -> None:
     memory_feedback = None
     previous_last_frame_embedding = None
     previous_clip_embedding = None
+    previous_style_signature = None
     previous_environment_anchor = ""
     previous_reference_frames: Optional[List[Any]] = None
     next_negative_prompt = args.negative_prompt
@@ -1388,6 +1907,7 @@ def main() -> None:
         f"noise_conditioning={args.noise_conditioning} "
         f"noise_blend_strength={args.noise_blend_strength} "
         f"visual_quality_weight={args.visual_quality_weight} "
+        f"style_weight={args.style_weight} "
         f"disable_random_generation={args.disable_random_generation}"
     )
 
@@ -1398,6 +1918,7 @@ def main() -> None:
             memory_feedback = None
             previous_last_frame_embedding = None
             previous_clip_embedding = None
+            previous_style_signature = None
             previous_environment_anchor = ""
             previous_reference_frames = None
             next_negative_prompt = args.negative_prompt
@@ -1409,16 +1930,11 @@ def main() -> None:
         previous_beat = previous_window.beat if previous_window is not None else ""
         next_beat = next_window.beat if next_window is not None else ""
         story_progress_instruction = _story_progress_instruction(previous_beat, window.beat)
-        conversation_progress_instruction = _conversation_progress_instruction(
-            previous_scene_conversation,
-            window.beat,
-            next_beat,
-            scene_change_requested=scene_change_requested,
-        )
         window_scene_id = _window_scene_id(window)
         planned_environment_anchor = _window_environment_anchor(window)
         current_environment_anchor = planned_environment_anchor or previous_environment_anchor
         effective_character_lock = _merge_character_lock(args.character_lock, _window_character_lock(window))
+        character_names = _extract_character_names(args.storyline, window.beat)
         window_id = f"w_{window.index:03d}"
         explicit_window_reference_paths = _lookup_window_reference_paths(window_reference_images, window_id, window.index)
         reference_frames_for_window: Optional[List[Any]] = None
@@ -1446,6 +1962,21 @@ def main() -> None:
         refined_prompt = bundle.prompt_text
         current_shot_plan = bundle.shot_plan
         scene_conversation = bundle.scene_conversation
+        dialogue_scene = _should_use_dialogue_staging(
+            scene_conversation=scene_conversation,
+            beat=window.beat,
+            character_names=character_names,
+        )
+        conversation_progress_instruction = (
+            _conversation_progress_instruction(
+                previous_scene_conversation,
+                window.beat,
+                next_beat,
+                scene_change_requested=scene_change_requested,
+            )
+            if dialogue_scene
+            else ""
+        )
         generation_prompt = build_generation_prompt(
             refined_prompt=refined_prompt,
             beat=window.beat,
@@ -1459,6 +1990,7 @@ def main() -> None:
             previous_scene_conversation=previous_scene_conversation,
             conversation_progress_instruction=conversation_progress_instruction,
             story_progress_instruction=story_progress_instruction,
+            dialogue_scene=dialogue_scene,
             repair_hint="",
             shot_plan=current_shot_plan,
             shot_plan_enforce=args.shot_plan_enforce,
@@ -1484,6 +2016,10 @@ def main() -> None:
             "window_index": window.index,
             "time_range": [window.start_sec, window.end_sec],
             "beat": window.beat,
+            "story_phase": _window_story_phase(window),
+            "character_progression": _window_character_progression(window),
+            "relationship_dynamic": _window_relationship_dynamic(window),
+            "visible_change": _window_visible_change(window),
             "scene_id": window_scene_id or None,
             "prompt_seed": window.prompt_seed,
             "refined_prompt": refined_prompt,
@@ -1510,6 +2046,7 @@ def main() -> None:
             "noise_conditioning": bool(args.noise_conditioning),
             "noise_blend_strength": float(args.noise_blend_strength),
             "visual_quality_weight": float(args.visual_quality_weight),
+            "style_weight": float(args.style_weight),
             "reference_anchor_index": None,
             "semantic_alignment_weight": float(args.semantic_alignment_weight),
             "semantic_alignment_threshold": float(args.semantic_alignment_threshold),
@@ -1556,11 +2093,41 @@ def main() -> None:
                 scene_change_decay = max(0.0, float(args.scene_change_env_decay))
                 environment_weight *= scene_change_decay
             semantic_weight = max(0.0, min(1.0, float(args.semantic_alignment_weight)))
+            style_weight = max(0.0, min(0.35, float(args.style_weight)))
             semantic_alignment_active = captioner is not None and not captioner.is_stub and semantic_weight > 0.0
+            reference_style_signature = _estimate_clip_style_signature(reference_frames_for_window) if reference_frames_for_window else None
+            style_reference_signature = previous_style_signature
+            if reference_source != "previous_window_tail" and reference_style_signature is not None:
+                style_reference_signature = reference_style_signature
+            elif style_reference_signature is None:
+                style_reference_signature = reference_style_signature
             row["semantic_alignment_active"] = bool(semantic_alignment_active)
             repair_hint = ""
+            attempt_score_history: List[float] = []
+            convergence_reason = "max_iterations"
             planned_shot_plan = current_shot_plan
             for attempt_idx in range(max_attempts):
+                base_reference_strength = _reference_strength_for_window(
+                    base_strength=float(args.reference_strength),
+                    scene_change_requested=scene_change_requested,
+                    reference_source=reference_source,
+                    same_scene_as_previous=same_scene_as_previous,
+                )
+                attempt_tightening = _tightened_retry_settings(
+                    base_guidance_scale=float(args.guidance_scale),
+                    base_negative_prompt=next_negative_prompt,
+                    base_reference_strength=base_reference_strength,
+                    base_noise_blend_strength=float(args.noise_blend_strength),
+                    attempt_idx=attempt_idx,
+                    max_attempts=max_attempts,
+                    progressive_tightening=bool(args.progressive_tightening),
+                    tightening_strength=float(args.tightening_strength),
+                )
+                attempt_repair_hint = " ".join(
+                    part
+                    for part in [repair_hint, str(attempt_tightening.get("repair_constraint", "")).strip()]
+                    if part
+                ).strip()
                 generation_prompt = build_generation_prompt(
                     refined_prompt=refined_prompt,
                     beat=window.beat,
@@ -1574,7 +2141,8 @@ def main() -> None:
                     previous_scene_conversation=previous_scene_conversation,
                     conversation_progress_instruction=conversation_progress_instruction,
                     story_progress_instruction=story_progress_instruction,
-                    repair_hint=repair_hint,
+                    dialogue_scene=dialogue_scene,
+                    repair_hint=attempt_repair_hint,
                     shot_plan=current_shot_plan,
                     shot_plan_enforce=args.shot_plan_enforce,
                 )
@@ -1584,29 +2152,21 @@ def main() -> None:
                     candidate_seed = base_seed if args.disable_random_generation else None
                     if not args.disable_random_generation and base_seed is not None:
                         candidate_seed = base_seed + candidate_idx + (attempt_idx * max(32, num_candidates))
-                    effective_reference_strength = _reference_strength_for_window(
-                        base_strength=float(args.reference_strength),
-                        scene_change_requested=scene_change_requested,
-                        reference_source=reference_source,
-                        same_scene_as_previous=same_scene_as_previous,
-                    )
-                    if reference_source == "previous_window_tail" and attempt_idx > 0:
-                        effective_reference_strength = max(0.5, effective_reference_strength - (0.06 * attempt_idx))
                     candidate_frames = backbone.generate_clip(
                         prompt=generation_prompt,
-                        negative_prompt=next_negative_prompt,
+                        negative_prompt=str(attempt_tightening["negative_prompt"]),
                         num_frames=args.num_frames,
                         num_inference_steps=args.steps,
-                        guidance_scale=args.guidance_scale,
+                        guidance_scale=float(attempt_tightening["guidance_scale"]),
                         height=args.height,
                         width=args.width,
                         seed=candidate_seed,
                         reference_frames=reference_frames_for_window,
-                        reference_strength=effective_reference_strength,
+                        reference_strength=float(attempt_tightening["reference_strength"]),
                         reference_source=reference_source,
                         disable_random_generation=bool(args.disable_random_generation),
                         use_noise_conditioning=bool(args.noise_conditioning),
-                        noise_blend_strength=float(args.noise_blend_strength),
+                        noise_blend_strength=float(attempt_tightening["noise_blend_strength"]),
                     )
                     row["conditioning_mode"] = getattr(backbone, "last_conditioning_mode", row["conditioning_mode"])
                     row["reference_anchor_index"] = getattr(backbone, "last_reference_anchor_index", row["reference_anchor_index"])
@@ -1625,11 +2185,16 @@ def main() -> None:
                         candidate_embedding = embedder.embed_frames(candidate_frames)
                         environment_similarity = _cosine_similarity(candidate_embedding, previous_clip_embedding)
 
+                    candidate_style_signature = _estimate_clip_style_signature(candidate_frames)
+                    style_similarity = _style_signature_similarity(style_reference_signature, candidate_style_signature)
+
                     continuity_score = _combine_continuity_score(
                         transition_similarity=transition_similarity,
                         environment_similarity=environment_similarity,
+                        style_similarity=style_similarity,
                         transition_weight=transition_weight,
                         environment_weight=environment_weight,
+                        style_weight=style_weight,
                     )
                     critic = evaluate_candidate(
                         current_beat=window.beat,
@@ -1644,6 +2209,7 @@ def main() -> None:
 
                     visual_quality_score = _estimate_clip_visual_quality(candidate_frames)
                     visual_quality_feedback = _visual_quality_feedback(visual_quality_score)
+                    style_feedback = _style_similarity_feedback(style_similarity)
 
                     semantic_alignment_score = None
                     semantic_feedback = ""
@@ -1680,13 +2246,21 @@ def main() -> None:
                         "attempt_index": attempt_idx,
                         "candidate_index": candidate_idx,
                         "seed": candidate_seed,
+                        "attempt_progress": attempt_tightening["attempt_progress"],
+                        "guidance_scale": attempt_tightening["guidance_scale"],
+                        "reference_strength": attempt_tightening["reference_strength"],
+                        "noise_blend_strength": attempt_tightening["noise_blend_strength"],
+                        "negative_prompt": attempt_tightening["negative_prompt"],
+                        "repair_constraint": attempt_tightening["repair_constraint"],
                         "transition_similarity": transition_similarity,
                         "environment_similarity": environment_similarity,
+                        "style_similarity": style_similarity,
                         "continuity_score": continuity_score,
                         "critic_score": critic.final_score,
                         "critic_story_progress_score": critic.story_progress_score,
                         "critic_feedback": critic.feedback,
                         "visual_quality_score": visual_quality_score,
+                        "style_feedback": style_feedback,
                         "visual_quality_feedback": visual_quality_feedback,
                         "semantic_alignment_score": semantic_alignment_score,
                         "semantic_feedback": semantic_feedback,
@@ -1698,14 +2272,23 @@ def main() -> None:
                     candidate_state = {
                         "frames": candidate_frames,
                         "seed": candidate_seed,
+                        "attempt_progress": attempt_tightening["attempt_progress"],
+                        "guidance_scale": attempt_tightening["guidance_scale"],
+                        "reference_strength": attempt_tightening["reference_strength"],
+                        "noise_blend_strength": attempt_tightening["noise_blend_strength"],
+                        "negative_prompt": attempt_tightening["negative_prompt"],
+                        "repair_constraint": attempt_tightening["repair_constraint"],
                         "transition_similarity": transition_similarity,
                         "environment_similarity": environment_similarity,
+                        "style_similarity": style_similarity,
                         "continuity_score": continuity_score,
                         "clip_embedding": candidate_embedding,
+                        "style_signature": candidate_style_signature,
                         "critic_score": critic.final_score,
                         "critic_feedback": critic.feedback,
                         "visual_quality_score": visual_quality_score,
                         "visual_quality_feedback": visual_quality_feedback,
+                        "style_feedback": style_feedback,
                         "semantic_alignment_score": semantic_alignment_score,
                         "semantic_feedback": semantic_feedback,
                         "selection_score": selection_score,
@@ -1721,13 +2304,23 @@ def main() -> None:
                     continue
                 if best_overall is None or best_attempt["selection_score"] > best_overall["selection_score"]:
                     best_overall = best_attempt
-                if best_attempt["selection_score"] >= float(args.continuity_min_score):
-                    selected = best_attempt
+                attempt_score_history.append(float(best_attempt["selection_score"]))
+                converged, attempt_reason = _retry_convergence_status(
+                    attempt_score_history,
+                    threshold=float(args.continuity_min_score),
+                    patience=int(args.continuity_convergence_patience),
+                    tolerance=float(args.continuity_convergence_tolerance),
+                )
+                if converged:
+                    if attempt_reason == "threshold_met":
+                        selected = best_attempt
+                    convergence_reason = attempt_reason or convergence_reason
                     break
                 repair_notes = [
                     best_attempt["critic_feedback"],
                     best_attempt.get("semantic_feedback", ""),
                     best_attempt.get("visual_quality_feedback", ""),
+                    best_attempt.get("style_feedback", ""),
                 ]
                 repair_hint = " ".join(note for note in repair_notes if note).strip()
                 combined_constraints = repair_hint
@@ -1763,24 +2356,39 @@ def main() -> None:
             row["continuity_candidates"] = num_candidates
             row["selected_transition_similarity"] = selected["transition_similarity"]
             row["selected_environment_similarity"] = selected["environment_similarity"]
+            row["selected_style_similarity"] = selected.get("style_similarity")
             row["selected_continuity_score"] = selected["continuity_score"]
             row["selected_critic_score"] = selected["critic_score"]
             row["selected_critic_feedback"] = selected["critic_feedback"]
             row["selected_visual_quality_score"] = selected.get("visual_quality_score")
             row["selected_visual_quality_feedback"] = selected.get("visual_quality_feedback", "")
+            row["selected_style_feedback"] = selected.get("style_feedback", "")
             row["selected_semantic_alignment_score"] = selected.get("semantic_alignment_score")
             row["selected_semantic_feedback"] = selected.get("semantic_feedback", "")
             row["selected_selection_score"] = selected.get("selection_score", selected["critic_score"])
             row["generation_prompt"] = selected["generation_prompt"]
             row["selected_attempt_index"] = selected["attempt_index"]
-            row["reference_strength_used"] = _reference_strength_for_window(
+            row["selected_attempt_progress"] = selected.get("attempt_progress")
+            row["selected_guidance_scale"] = selected.get("guidance_scale")
+            row["selected_reference_strength"] = selected.get("reference_strength")
+            row["selected_noise_blend_strength"] = selected.get("noise_blend_strength")
+            row["selected_negative_prompt"] = selected.get("negative_prompt", next_negative_prompt)
+            row["selected_repair_constraint"] = selected.get("repair_constraint", "")
+            row["reference_strength_used"] = selected.get("reference_strength", _reference_strength_for_window(
                 base_strength=float(args.reference_strength),
                 scene_change_requested=scene_change_requested,
                 reference_source=reference_source,
                 same_scene_as_previous=same_scene_as_previous,
-            )
+            ))
+            row["attempt_scores_history"] = attempt_score_history
+            row["converged"] = convergence_reason in {"threshold_met", "score_plateau"}
+            row["convergence_reason"] = convergence_reason
+            row["progressive_tightening"] = bool(args.progressive_tightening)
+            row["tightening_strength"] = float(args.tightening_strength)
             row["continuity_min_score"] = args.continuity_min_score
             row["continuity_regen_attempts"] = max_attempts
+            row["continuity_convergence_patience"] = int(args.continuity_convergence_patience)
+            row["continuity_convergence_tolerance"] = float(args.continuity_convergence_tolerance)
             row["shot_plan"] = current_shot_plan.__dict__
             row["scene_conversation"] = scene_conversation
             row["previous_scene_conversation"] = previous_scene_conversation
@@ -1840,13 +2448,16 @@ def main() -> None:
                     previous_last_frame_embedding = embedder.embed_last_frame(frames)
                 if args.environment_memory:
                     previous_clip_embedding = embedding
+            previous_style_signature = selected.get("style_signature")
+            if previous_style_signature is None:
+                previous_style_signature = _estimate_clip_style_signature(frames)
             if args.reference_conditioning:
                 tail_count = max(1, int(args.reference_tail_frames))
                 previous_reference_frames = list(frames[-tail_count:])
 
         if not args.parallel_window_mode:
             previous_prompt = _compact_previous_prompt(refined_prompt)
-            previous_scene_conversation = scene_conversation
+            previous_scene_conversation = scene_conversation if dialogue_scene else ""
             next_environment_anchor = planned_environment_anchor
             if not next_environment_anchor and captioner is not None and not captioner.is_stub and row.get("caption_summary"):
                 next_environment_anchor = row["caption_summary"]
@@ -1908,7 +2519,12 @@ def main() -> None:
         "storyline": args.storyline,
         "total_minutes": args.total_minutes,
         "window_seconds": args.window_seconds,
+        "planned_runtime_seconds": len(windows) * args.window_seconds,
         "num_windows": len(windows),
+        "window_count_mode": "window_plan_json" if beats_override else args.window_count_mode,
+        "target_words_per_window": args.target_words_per_window,
+        "min_dynamic_windows": args.min_dynamic_windows,
+        "max_dynamic_windows": args.max_dynamic_windows,
         "dry_run": args.dry_run,
         "director_model_id": args.director_model_id or None,
         "director_max_new_tokens": args.director_max_new_tokens,
@@ -1931,12 +2547,17 @@ def main() -> None:
         "semantic_alignment_weight": args.semantic_alignment_weight,
         "semantic_alignment_threshold": args.semantic_alignment_threshold,
         "semantic_caption_sample_count": args.semantic_caption_sample_count,
+        "style_weight": args.style_weight,
         "window_reference_images_json": args.window_reference_images_json or None,
         "disable_random_generation": args.disable_random_generation,
         "seed": args.seed,
         "seed_strategy": args.seed_strategy,
         "continuity_min_score": args.continuity_min_score,
         "continuity_regen_attempts": args.continuity_regen_attempts,
+        "continuity_convergence_patience": args.continuity_convergence_patience,
+        "continuity_convergence_tolerance": args.continuity_convergence_tolerance,
+        "progressive_tightening": bool(args.progressive_tightening),
+        "tightening_strength": float(args.tightening_strength),
         "critic_story_weight": args.critic_story_weight,
         "window_shard_count": args.window_shard_count,
         "window_shard_index": args.window_shard_index,

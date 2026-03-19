@@ -79,14 +79,15 @@ IMPROVED PROMPT:
 
         try:
             improved_prompt = self.llm_model.generate(opt_prompt)
-            # Clean up response (may contain extra text)
-            improved_prompt = improved_prompt.strip()
+            improved_prompt = " ".join((improved_prompt or "").strip().split())
             if len(improved_prompt) == 0:
-                return base_prompt  # Fallback to original if empty
+                return base_prompt
+            if len(improved_prompt) > 900:
+                return base_prompt
             return improved_prompt
         except Exception as e:
             print(f"Warning: Prompt optimization failed: {e}")
-            return base_prompt  # Fallback to original on error
+            return base_prompt
 
     def _summarize_feedback(self, agent_feedback: Dict[str, AgentResult]) -> str:
         """Format feedback from all agents into readable summary"""

@@ -18,6 +18,10 @@ class SceneWindow:
     environment_anchor: str = ""
     character_lock: str = ""
     scene_change: Optional[bool] = None
+    story_phase: str = ""
+    character_progression: str = ""
+    relationship_dynamic: str = ""
+    visible_change: str = ""
 
 
 @dataclass
@@ -44,6 +48,10 @@ class SceneDirectorConfig:
     max_new_tokens: int = 512
     do_sample: bool = False
     shot_plan_defaults: str = "cinematic"  # cinematic | docu | action
+    window_count_mode: str = "dynamic"  # dynamic | fixed
+    target_words_per_window: int = 28
+    min_dynamic_windows: int = 1
+    max_dynamic_windows: int = 24
 
 
 class SceneDirector:
@@ -53,7 +61,20 @@ class SceneDirector:
 
     def __init__(self, config: SceneDirectorConfig, window_seconds: int = 10):
         self.config = config
-        self.window_seconds = window_seconds
+        self.window_seconds = int(window_seconds)
+        if self.window_seconds <= 0:
+            raise ValueError("window_seconds must be a positive integer")
+        self.config.target_words_per_window = int(self.config.target_words_per_window)
+        self.config.min_dynamic_windows = int(self.config.min_dynamic_windows)
+        self.config.max_dynamic_windows = int(self.config.max_dynamic_windows)
+        if self.config.window_count_mode not in {"dynamic", "fixed"}:
+            raise ValueError("window_count_mode must be either 'dynamic' or 'fixed'")
+        if self.config.target_words_per_window <= 0:
+            raise ValueError("target_words_per_window must be a positive integer")
+        if self.config.min_dynamic_windows <= 0:
+            raise ValueError("min_dynamic_windows must be a positive integer")
+        if self.config.max_dynamic_windows < self.config.min_dynamic_windows:
+            raise ValueError("max_dynamic_windows must be >= min_dynamic_windows")
         self._tokenizer = None
         self._model = None
         self._torch = None
@@ -78,9 +99,32 @@ class SceneDirector:
             self._model.to("cuda")
         self._model.eval()
 
-    def plan_windows(self, storyline: str, total_minutes: float) -> List[SceneWindow]:
-        window_count = max(1, math.ceil((total_minutes * 60) / self.window_seconds))
+    def generate_text(self, prompt: str, max_new_tokens: Optional[int] = None) -> str:
+        if self._model is None or self._tokenizer is None or self._torch is None:
+            return ""
 
+        gen_kwargs: Dict[str, Any] = {
+            "max_new_tokens": int(max_new_tokens or self.config.max_new_tokens),
+            "do_sample": self.config.do_sample,
+            "pad_token_id": self._tokenizer.pad_token_id,
+        }
+        if self.config.do_sample:
+            gen_kwargs["temperature"] = self.config.temperature
+
+        tokenized = self._tokenizer(prompt, return_tensors="pt")
+        model_device = next(self._model.parameters()).device
+        tokenized = {k: v.to(model_device) for k, v in tokenized.items()}
+        with self._torch.no_grad():
+            output_ids = self._model.generate(**tokenized, **gen_kwargs)
+        new_token_ids = output_ids[0][tokenized["input_ids"].shape[-1] :]
+        return self._tokenizer.decode(new_token_ids, skip_special_tokens=True).strip()
+
+    def plan_windows(
+        self,
+        storyline: str,
+        total_minutes: float,
+        beats_override: Optional[List[Any]] = None,
+    ) -> List[SceneWindow]:
         window_specs: List[Dict[str, Any]]
         if beats_override:
             window_specs = self._normalize_beats_override(beats_override)
@@ -91,6 +135,11 @@ class SceneDirector:
             beats = self._extract_story_beats(storyline)
             if not beats:
                 beats = [storyline.strip() or "Continue the story naturally."]
+            window_count = self._resolve_window_count(
+                storyline=storyline,
+                total_minutes=total_minutes,
+                beats=beats,
+            )
             beat_plan = self._expand_beats_for_windows(beats, window_count)
             window_specs = [{"beat": beat} for beat in beat_plan]
 
@@ -105,6 +154,20 @@ class SceneDirector:
                 is_opening=(i == 0),
                 environment_anchor=str(spec.get("environment_anchor", "")).strip(),
             )
+            story_phase = self._clean_window_text(spec.get("story_phase")) or self._story_phase_for_window(i, window_count)
+            character_progression = self._clean_window_text(spec.get("character_progression")) or self._derive_character_progression(
+                storyline,
+                beat,
+                i,
+                window_count,
+            )
+            relationship_dynamic = self._clean_window_text(spec.get("relationship_dynamic")) or self._derive_relationship_dynamic(
+                storyline,
+                beat,
+                i,
+                window_count,
+            )
+            visible_change = self._clean_window_text(spec.get("visible_change")) or self._derive_visible_change(beat, i, window_count)
             windows.append(
                 SceneWindow(
                     index=i,
@@ -118,6 +181,10 @@ class SceneDirector:
                     scene_change=spec.get("scene_change")
                     if isinstance(spec.get("scene_change"), bool)
                     else None,
+                    story_phase=story_phase,
+                    character_progression=character_progression,
+                    relationship_dynamic=relationship_dynamic,
+                    visible_change=visible_change,
                 )
             )
         return windows
@@ -127,16 +194,10 @@ class SceneDirector:
         storyline: str,
         window: SceneWindow,
         previous_prompt: str,
-<<<<<<< Updated upstream
-        memory_feedback: Optional[Dict[str, Any]],
-    ) -> str:
-        if self._model is None or self._tokenizer is None or self._torch is None:
-            return self._heuristic_refine_prompt(window, previous_prompt, memory_feedback)
-=======
         previous_scene_conversation: str = "",
         memory_feedback: Optional[Dict[str, Any]] = None,
     ) -> PromptBundle:
-        if self._generator is None:
+        if self._model is None or self._tokenizer is None or self._torch is None:
             return self._heuristic_refine_prompt(
                 storyline,
                 window,
@@ -144,7 +205,6 @@ class SceneDirector:
                 previous_scene_conversation,
                 memory_feedback,
             )
->>>>>>> Stashed changes
 
         compact_prev = self._compact_previous_prompt(previous_prompt)
         compact_storyline = self._compact_storyline(storyline)
@@ -158,6 +218,10 @@ class SceneDirector:
             "scene_id": window.scene_id,
             "environment_anchor": window.environment_anchor,
             "character_lock": self._compact_storyline(window.character_lock),
+            "story_phase": window.story_phase,
+            "character_progression": self._compact_storyline(window.character_progression),
+            "relationship_dynamic": self._compact_storyline(window.relationship_dynamic),
+            "visible_change": self._compact_storyline(window.visible_change),
             "scene_change": window.scene_change,
             "previous_prompt": compact_prev,
             "previous_scene_conversation": previous_conversation,
@@ -174,34 +238,19 @@ class SceneDirector:
             "5) Use concrete visual language, not abstract prose.\n"
             "6) Show visible progress from the previous window; avoid restaging the same pose or tableau.\n"
             "7) Make the action and state change obvious on screen.\n"
-            "8) Add a short scene_conversation cue that explains what the characters are saying or emotionally exchanging in this window. Use reported speech or a very short dialogue beat, and never mention subtitles.\n"
-            "9) If previous_scene_conversation is provided and scene_change is false, make the new scene_conversation feel like the next conversational turn instead of restarting the exchange from zero.\n"
-            "10) If scene_change is true, start a fresh exchange for the new location or time jump, but preserve the emotional tension or objective from the previous scene.\n"
+            "8) Add a short scene_conversation cue only when the beat clearly involves dialogue, self-talk, or an emotional exchange. Leave scene_conversation empty for solo movement, exploration, or action-only beats.\n"
+            "9) If previous_scene_conversation is provided and scene_change is false, continue it only when the current beat is still dialogue-driven.\n"
+            "10) If scene_change is true and the beat is dialogue-driven, start a fresh exchange for the new location or time jump while preserving the emotional tension or objective from the previous scene.\n"
             "11) For dialogue-heavy windows, prefer stable conversational coverage, readable faces, clear gestures, and the same visible background instead of flashy camera changes.\n"
-            "12) Keep both speakers grounded in the same physical location unless the beat explicitly requires movement away from the background anchor.\n"
+            "12) Keep both speakers grounded in the same physical location only when the beat actually calls for multiple on-screen speakers.\n"
+            "13) Make character evolution visible through posture, gaze, spacing, prop handling, and timing; do not reset emotions between windows.\n"
+            "14) Use story_phase, character_progression, relationship_dynamic, and visible_change as explicit on-screen direction when they are provided.\n"
             "Return JSON only with keys:\n"
-            "{\"shot_type\":\"...\",\"camera_angle\":\"...\",\"camera_motion\":\"...\","
-            "\"subject_blocking\":\"...\",\"action\":\"...\",\"continuity_anchor\":\"...\",\"scene_conversation\":\"...\"}\n"
+            '{"shot_type":"...","camera_angle":"...","camera_motion":"...",'
+            '"subject_blocking":"...","action":"...","continuity_anchor":"...","scene_conversation":"..."}\n'
             f"Context:\n{json.dumps(context, ensure_ascii=False)}\n"
         )
-
-        gen_kwargs: Dict[str, Any] = {
-            "max_new_tokens": self.config.max_new_tokens,
-            "do_sample": self.config.do_sample,
-            "pad_token_id": self._tokenizer.pad_token_id,
-        }
-        if self.config.do_sample:
-            gen_kwargs["temperature"] = self.config.temperature
-
-        tokenized = self._tokenizer(prompt, return_tensors="pt")
-        model_device = next(self._model.parameters()).device
-        tokenized = {k: v.to(model_device) for k, v in tokenized.items()}
-        with self._torch.no_grad():
-            output_ids = self._model.generate(**tokenized, **gen_kwargs)
-        new_token_ids = output_ids[0][tokenized["input_ids"].shape[-1] :]
-        out = self._tokenizer.decode(new_token_ids, skip_special_tokens=True).strip()
-
-        parsed = self._extract_json_object(out)
+        parsed = self._extract_json_object(self.generate_text(prompt))
         if parsed:
             shot_plan = self._to_shot_plan(parsed, window)
             scene_conversation = self._to_scene_conversation(
@@ -255,6 +304,52 @@ class SceneDirector:
         return beats
 
     @staticmethod
+    def _word_count(text: str) -> int:
+        return len(re.findall(r"\b[\w']+\b", text or ""))
+
+    def _fixed_window_count(self, total_minutes: float) -> int:
+        runtime_seconds = max(0.0, float(total_minutes or 0.0)) * 60.0
+        return max(1, math.ceil(runtime_seconds / self.window_seconds))
+
+    def _estimate_windows_for_beat(self, beat: str) -> int:
+        word_count = self._word_count(beat)
+        estimated = max(1, math.ceil(word_count / self.config.target_words_per_window))
+        lowered = beat.lower()
+        if estimated == 1 and word_count >= max(6, self.config.target_words_per_window // 2):
+            if self._contains_hint(
+                lowered,
+                [
+                    "argue",
+                    "fight",
+                    "confront",
+                    "chase",
+                    "escape",
+                    "discover",
+                    "decide",
+                    "choose",
+                    "transform",
+                    "reveal",
+                    "reconcile",
+                    "apologize",
+                    "rescue",
+                ],
+            ):
+                estimated += 1
+        return min(3, estimated)
+
+    def _dynamic_window_count(self, storyline: str, beats: List[str]) -> int:
+        word_based = max(1, math.ceil(self._word_count(storyline) / self.config.target_words_per_window))
+        beat_based = sum(self._estimate_windows_for_beat(beat) for beat in beats) or 1
+        candidate = max(len(beats), word_based, beat_based)
+        candidate = max(self.config.min_dynamic_windows, candidate)
+        return min(self.config.max_dynamic_windows, candidate)
+
+    def _resolve_window_count(self, storyline: str, total_minutes: float, beats: List[str]) -> int:
+        if self.config.window_count_mode == "fixed":
+            return self._fixed_window_count(total_minutes)
+        return self._dynamic_window_count(storyline, beats)
+
+    @staticmethod
     def _expand_beats_for_windows(beats: List[str], window_count: int) -> List[str]:
         if len(beats) >= window_count:
             return beats[:window_count]
@@ -269,11 +364,11 @@ class SceneDirector:
             for j in range(count):
                 phase = "start" if j == 0 else ("end" if j == count - 1 else "middle")
                 if phase == "start":
-                    plan.append(f"Start this beat clearly: {beat}. Show the action beginning on screen.")
+                    plan.append(f"Start this beat clearly: {beat}. Show the character's initial emotional stance on screen.")
                 elif phase == "middle":
-                    plan.append(f"Continue this beat with visible progress: {beat}. Show a clear mid-action change, not a reset.")
+                    plan.append(f"Continue this beat with visible progress: {beat}. Show pressure changing the character's expression, posture, or decision, not a reset.")
                 else:
-                    plan.append(f"Resolve this beat clearly: {beat}. Show the outcome or state change on screen.")
+                    plan.append(f"Resolve this beat clearly: {beat}. Show the outcome and how the character is different on screen.")
         return plan[:window_count]
 
     @staticmethod
@@ -288,6 +383,92 @@ class SceneDirector:
             "Continue naturally from previous clip with motion continuity and clear story progression, "
             f"story action: {beat}{anchor_clause}"
         )
+
+    @staticmethod
+    def _clean_window_text(value: Any) -> str:
+        return " ".join(str(value or "").split()).strip()
+
+    @staticmethod
+    def _story_phase_for_window(index: int, total_windows: int) -> str:
+        if total_windows <= 1 or index <= 0:
+            return "setup"
+        if index >= total_windows - 1:
+            return "resolution"
+        progress = index / max(1, total_windows - 1)
+        if progress <= 0.34:
+            return "inciting_shift"
+        if progress <= 0.72:
+            return "rising_pressure"
+        return "turning_point"
+
+    @staticmethod
+    def _contains_hint(text: str, hints: List[str]) -> bool:
+        return any(hint in text for hint in hints)
+
+    def _derive_character_progression(self, storyline: str, beat: str, index: int, total_windows: int) -> str:
+        names = self._extract_character_names(beat) or self._extract_character_names(storyline)
+        lead = names[0] if names else "the main character"
+        second = names[1] if len(names) > 1 else ""
+        story_phase = self._story_phase_for_window(index, total_windows)
+        influence = f" {second} should visibly influence that shift." if second else ""
+        if story_phase == "setup":
+            return f"{lead} should begin in a readable baseline state with a clear goal and emotional starting point.{influence}"
+        if story_phase == "inciting_shift":
+            return f"{lead} should still carry the earlier attitude, but this beat must start pushing visible behavior in a new direction.{influence}"
+        if story_phase == "rising_pressure":
+            return f"{lead} should look increasingly affected by the conflict here instead of emotionally resetting.{influence}"
+        if story_phase == "turning_point":
+            return f"{lead} should make a revealing choice or reaction here that clearly changes how the conflict is being handled.{influence}"
+        return f"{lead} should land in a visibly changed emotional state by the end of this beat, showing the effect of the story conflict.{influence}"
+
+    def _derive_relationship_dynamic(self, storyline: str, beat: str, index: int, total_windows: int) -> str:
+        names = self._extract_character_names(beat) or self._extract_character_names(storyline)
+        if len(names) < 2:
+            lead = names[0] if names else "the main character"
+            return f"Carry {lead}'s internal tension through reactions, timing, and deliberate physical choices."
+
+        first_name, second_name = names[:2]
+        lowered = beat.lower()
+        story_phase = self._story_phase_for_window(index, total_windows)
+        if self._contains_hint(lowered, ["argue", "fight", "blame", "resent", "refuse", "confront", "shout"]):
+            return f"There should be open friction and emotional distance between {first_name} and {second_name}."
+        if self._contains_hint(lowered, ["reconcile", "forgive", "apologize", "help", "support", "trust", "embrace", "stand beside"]):
+            return f"Distance should start closing as trust rebuilds between {first_name} and {second_name}."
+        if self._contains_hint(lowered, ["meet", "find", "wait", "ask", "appear", "arrive"]):
+            return f"The exchange between {first_name} and {second_name} should feel cautious, charged, and unfinished."
+        if story_phase == "turning_point":
+            return f"One character's decision should force the other to respond, changing the emotional distance between {first_name} and {second_name}."
+        if story_phase == "resolution":
+            return f"{first_name} and {second_name} should settle into a visibly changed emotional balance by the end of this beat."
+        return f"The interaction between {first_name} and {second_name} should keep emotional pressure active and push both characters forward."
+
+    def _derive_visible_change(self, beat: str, index: int, total_windows: int) -> str:
+        lowered = beat.lower()
+        story_phase = self._story_phase_for_window(index, total_windows)
+        if self._contains_hint(lowered, ["rush", "race", "run", "hurry", "deadline", "depart", "last train"]):
+            return "show faster movement, tighter grip on props, and a visibly pressured posture"
+        if self._contains_hint(lowered, ["argue", "fight", "confront", "blame", "shout"]):
+            return "show sharper gestures, defensive spacing, interrupted eye contact, and tense facial reactions"
+        if self._contains_hint(lowered, ["reconcile", "forgive", "help", "support", "embrace", "trust", "stand beside"]):
+            return "show reduced distance, softer faces, shared eyelines, and more cooperative body language"
+        if self._contains_hint(lowered, ["choose", "decide", "pause", "hesitate", "step away", "turn back"]):
+            return "show a hesitation beat followed by a deliberate physical choice that changes the scene"
+        if story_phase == "turning_point":
+            return "show a visible shift in posture, gaze, and spacing so the emotional turn is readable without dialogue"
+        if story_phase == "resolution":
+            return "show calmer breathing, settled posture, and the emotional aftermath of the decision"
+        return "change body pose, prop handling, and staging so the story does not reset emotionally"
+
+    def _heuristic_subject_blocking(self, window: SceneWindow) -> str:
+        relation = window.relationship_dynamic.lower()
+        visible_change = window.visible_change.lower()
+        if "friction" in relation or "distance" in relation or "tension" in relation:
+            return "keep both characters readable with tense spacing, reactive eyelines, and guarded posture"
+        if "trust" in relation or "cooperative" in visible_change or "shared eyelines" in visible_change:
+            return "stage the characters closer together with shared eyelines and coordinated movement"
+        if window.scene_change:
+            return "re-establish the characters in the new space with readable faces, hands, and body orientation"
+        return "keep main subjects consistent and centered with readable faces, hands, and prop interaction"
 
     def _heuristic_refine_prompt(
         self,
@@ -305,7 +486,7 @@ class SceneDirector:
             shot_type=shot_type,
             camera_angle=camera_angle,
             camera_motion=camera_motion,
-            subject_blocking="keep main subjects consistent and centered",
+            subject_blocking=self._heuristic_subject_blocking(window),
             continuity_anchor=continuity_anchor,
             action=window.beat,
         )
@@ -367,12 +548,44 @@ class SceneDirector:
             "Objective",
             "Emotion",
         }
+        location_terms = {
+            "Mountain",
+            "Mountains",
+            "Valley",
+            "Valleys",
+            "Forest",
+            "Forests",
+            "Ruins",
+            "Peak",
+            "Peaks",
+            "Path",
+            "Road",
+            "River",
+            "Lake",
+            "Sea",
+            "Ocean",
+            "Castle",
+            "Village",
+            "City",
+            "Temple",
+            "Tower",
+            "Desert",
+            "Cave",
+            "Caves",
+            "Kingdom",
+            "Courtyard",
+            "Station",
+            "Platform",
+            "Train",
+        }
         names: List[str] = []
         for token in re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b", text or ""):
             token = re.sub(r"^(?:At|In|On|Back|Inside|Outside|Later|Earlier|From)\s+", "", token).strip()
             if len(token) <= 2:
                 continue
             if token in deny:
+                continue
+            if any(word in location_terms for word in token.split()):
                 continue
             if any(token == existing or token in existing or existing in token for existing in names):
                 continue
@@ -381,6 +594,64 @@ class SceneDirector:
                 break
         return names
 
+    @staticmethod
+    def _beat_supports_scene_conversation(text: str) -> bool:
+        normalized = re.sub(r"\s+", " ", str(text or "").lower()).strip()
+        lowered = f" {normalized} "
+        markers = (
+            " says ",
+            " ask ",
+            " asks ",
+            " tell ",
+            " tells ",
+            " reply ",
+            " replies ",
+            " respond ",
+            " responds ",
+            " answer ",
+            " answers ",
+            " shout ",
+            " shouts ",
+            " yell ",
+            " yells ",
+            " argue ",
+            " argues ",
+            " speak ",
+            " speaks ",
+            " talk ",
+            " talks ",
+            " whisper ",
+            " whispers ",
+            " mutter ",
+            " mutters ",
+            " conversation ",
+            " dialogue ",
+            " exchange ",
+        )
+        return any(marker in lowered for marker in markers) or '"' in str(text or "") or '“' in str(text or "") or '”' in str(text or "")
+
+    @staticmethod
+    def _is_self_talk(text: str) -> bool:
+        normalized = re.sub(r"\s+", " ", str(text or "").lower()).strip()
+        lowered = f" {normalized} "
+        markers = (
+            " to herself ",
+            " to himself ",
+            " to themself ",
+            " to myself ",
+            " under her breath ",
+            " under his breath ",
+            " under their breath ",
+            " whispers to herself ",
+            " whispers to himself ",
+            " mutters to herself ",
+            " mutters to himself ",
+            " alone ",
+            " internal monologue ",
+            " inner monologue ",
+        )
+        return any(marker in lowered for marker in markers)
+
     def _heuristic_scene_conversation(
         self,
         storyline: str,
@@ -388,6 +659,9 @@ class SceneDirector:
         previous_scene_conversation: str,
     ) -> str:
         beat_text = self._normalize_scene_conversation(str(window.beat).rstrip("."))
+        if not self._beat_supports_scene_conversation(beat_text):
+            return ""
+
         beat_names = self._extract_character_names(window.beat)
         story_names = []
         for name in self._extract_character_names(storyline):
@@ -397,40 +671,30 @@ class SceneDirector:
         names = (beat_names + story_names)[:2]
         previous_turn = self._compact_scene_conversation(previous_scene_conversation)
         scene_change = bool(window.scene_change)
-        if len(names) >= 2:
-            if previous_turn:
-                if scene_change:
-                    return self._normalize_scene_conversation(
-                        f"Carry over the emotional tension into a new exchange as {names[0]} and {names[1]} push this scene beat forward: {beat_text}."
-                    )
+
+        if self._is_self_talk(beat_text):
+            speaker = names[0] if names else "The protagonist"
+            if previous_turn and not scene_change:
                 return self._normalize_scene_conversation(
-                    f"Continuing the earlier exchange in the same setting, {names[0]} and {names[1]} speak and react in a way that pushes the scene toward this beat: {beat_text}."
+                    f"Continuing the same private resolve, {speaker} quietly reacts to themself while advancing this beat: {beat_text}."
                 )
             return self._normalize_scene_conversation(
-                f"{names[0]} and {names[1]} have a clear back-and-forth conversation that directly pushes this scene beat forward: {beat_text}."
+                f"{speaker} quietly reacts to themself while advancing this beat: {beat_text}."
             )
-        if len(names) == 1:
-            if previous_turn:
-                if scene_change:
-                    return self._normalize_scene_conversation(
-                        f"Carry over the emotional tension into a new exchange as {names[0]} responds in a way that drives this scene beat forward: {beat_text}."
-                    )
-                return self._normalize_scene_conversation(
-                    f"Continuing the earlier exchange in the same setting, {names[0]} responds while another speaker reacts, driving this scene beat forward: {beat_text}."
-                )
-            return self._normalize_scene_conversation(
-                f"{names[0]} speaks while another person responds, creating a clear back-and-forth that drives this scene beat forward: {beat_text}."
-            )
+
+        if len(names) < 2:
+            return ""
+
         if previous_turn:
             if scene_change:
                 return self._normalize_scene_conversation(
-                    f"Carry over the emotional tension into a new exchange while clearly advancing this scene beat: {beat_text}."
+                    f"Carry over the emotional tension into a new exchange as {names[0]} and {names[1]} push this scene beat forward: {beat_text}."
                 )
             return self._normalize_scene_conversation(
-                f"Continue the earlier exchange in the same setting while clearly advancing this scene beat: {beat_text}."
+                f"Continuing the earlier exchange in the same setting, {names[0]} and {names[1]} speak and react in a way that pushes the scene toward this beat: {beat_text}."
             )
         return self._normalize_scene_conversation(
-            f"Two people in the same setting should have a clear conversation that advances this scene beat: {beat_text}."
+            f"{names[0]} and {names[1]} have a clear back-and-forth conversation that directly pushes this scene beat forward: {beat_text}."
         )
 
     def _to_scene_conversation(
@@ -440,12 +704,18 @@ class SceneDirector:
         window: SceneWindow,
         previous_scene_conversation: str,
     ) -> str:
+        beat_text = str(window.beat)
+        supports_conversation = self._beat_supports_scene_conversation(beat_text)
         for key in ("scene_conversation", "dialogue_beat", "conversation"):
             value = parsed.get(key)
             if isinstance(value, str):
                 cleaned = self._normalize_scene_conversation(value)
-                if cleaned:
+                if not cleaned:
+                    continue
+                if supports_conversation:
                     return cleaned
+        if not supports_conversation:
+            return ""
         return self._heuristic_scene_conversation(
             storyline,
             window,
@@ -502,6 +772,10 @@ class SceneDirector:
                     character_lock = " ".join(str(item.get("character_lock", "")).split()).strip()
                     if character_lock:
                         entry["character_lock"] = character_lock
+                    for field in ("story_phase", "character_progression", "relationship_dynamic", "visible_change"):
+                        cleaned = " ".join(str(item.get(field, "")).split()).strip()
+                        if cleaned:
+                            entry[field] = cleaned
                     scene_change = item.get("scene_change")
                     if isinstance(scene_change, bool):
                         entry["scene_change"] = scene_change
@@ -546,7 +820,7 @@ class SceneDirector:
             shot_type=_field("shot_type", shot_type),
             camera_angle=_field("camera_angle", camera_angle),
             camera_motion=_field("camera_motion", camera_motion),
-            subject_blocking=_field("subject_blocking", "keep main subjects centered and consistent"),
+            subject_blocking=_field("subject_blocking", self._heuristic_subject_blocking(window)),
             continuity_anchor=_field(
                 "continuity_anchor",
                 window.environment_anchor.strip() or "preserve previous location layout and lighting",
@@ -561,13 +835,24 @@ class SceneDirector:
         continuity_note: str,
         previous_context: str,
     ) -> str:
+        extras: List[str] = []
+        if window.story_phase:
+            extras.append(f"Story phase: {window.story_phase}.")
+        if window.character_progression:
+            extras.append(f"Character progression: {window.character_progression}.")
+        if window.relationship_dynamic:
+            extras.append(f"Relationship dynamic: {window.relationship_dynamic}.")
+        if window.visible_change:
+            extras.append(f"Visible change: {window.visible_change}.")
+        extra_text = f" {' '.join(extras)}" if extras else ""
         base = (
             f"Shot type: {shot_plan.shot_type}. "
             f"Camera angle: {shot_plan.camera_angle}. "
             f"Camera motion: {shot_plan.camera_motion}. "
             f"Subject blocking: {shot_plan.subject_blocking}. "
             f"Action: {shot_plan.action}. "
-            f"Continuity anchor: {shot_plan.continuity_anchor}. "
+            f"Continuity anchor: {shot_plan.continuity_anchor}."
+            f"{extra_text} "
             f"Time window {window.start_sec}-{window.end_sec}s, {continuity_note}.{previous_context}"
         )
         return SceneDirector._normalize_prompt(base)

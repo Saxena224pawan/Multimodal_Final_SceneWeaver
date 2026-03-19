@@ -102,6 +102,10 @@ def test_validate_story_spec_rejects_invalid_size_bucket() -> None:
 
 def test_build_scene_plan_includes_scene_entity_contract_and_prompt_enforcement() -> None:
     spec = _base_story_spec()
+    spec["beats"][0]["story_phase"] = "setup"
+    spec["beats"][0]["character_progression"] = "Lana hides her worry behind focused motion while protecting the parcel"
+    spec["beats"][0]["relationship_dynamic"] = "The ticking gate and the parcel pressure Lana's choices even before she speaks"
+    spec["beats"][0]["visible_change"] = "Show Lana gripping the parcel tighter, scanning the gate, and moving with contained urgency"
     scene_plan = build_scene_plan(spec, window_seconds=4)
 
     assert scene_plan["input_contract"]["object_count"] == 2
@@ -122,9 +126,15 @@ def test_build_scene_plan_includes_scene_entity_contract_and_prompt_enforcement(
     assert contract["objects"][0]["id"] == "parcel"
     assert contract["objects"][0]["size_bucket"] == "tiny"
     assert contract["objects"][0]["visual_features"] == ["wet wrapping", "sealed wax"]
+    assert first["story_phase"] == "setup"
+    assert first["character_progression"] == "Lana hides her worry behind focused motion while protecting the parcel"
+    assert first["relationship_dynamic"] == "The ticking gate and the parcel pressure Lana's choices even before she speaks"
+    assert first["visible_change"] == "Show Lana gripping the parcel tighter, scanning the gate, and moving with contained urgency"
 
     assert "Require exactly 1 anchor character and exactly 2 anchor objects" in first["scene_prompt"]
     assert "Do not add extra named anchor characters or objects in this window." in first["scene_prompt"]
+    assert "Character progression: Lana hides her worry behind focused motion while protecting the parcel" in first["scene_prompt"]
+    assert "Visible change: Show Lana gripping the parcel tighter, scanning the gate, and moving with contained urgency" in first["expected_caption"]
     assert "count_rule=exact_anchors" in first["expected_caption"]
 
 
@@ -176,3 +186,6 @@ def test_build_scene_plan_backward_compatible_defaults() -> None:
     assert contract["characters"][0]["visual_features"] == ["calm", "steady"]
     assert contract["objects"][0]["size_bucket"] == "large"
     assert contract["objects"][0]["visual_features"] == ["blue paint"]
+    assert first["story_phase"] == "setup"
+    assert "Character progression:" in first["scene_prompt"]
+    assert "Visible change:" in first["expected_caption"]
