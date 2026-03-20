@@ -31,11 +31,14 @@ wan_model="${WAN_MODEL:-${hpc_vault_root}/sceneweaver_models/Wan2.2-I2V-A14B-Dif
 director_model="${DIRECTOR_MODEL:-${hpc_vault_root}/Multimodal_Final_SceneWeaver/LLM_MODEL/Qwen2.5-3B-Instruct}"
 dinov2_model="${DINOV2_MODEL:-${hpc_vault_root}/facebook/dinov2-base}"
 window_plan_json="${WINDOW_PLAN_JSON:-${project_root}/configs/window_plans/thirsty_crow_story.json}"
+story_library_file="${STORY_LIBRARY_FILE:-${project_root}/configs/stories/short_stories.sh}"
+selected_story="${SELECTED_STORY:-thirsty_crow}"
 
 [ -d "$wan_model" ] || { echo "ERROR: Wan model missing at $wan_model"; exit 1; }
 [ -d "$director_model" ] || { echo "ERROR: Director model missing at $director_model"; exit 1; }
 [ -d "$dinov2_model" ] || { echo "ERROR: DINOv2 model missing at $dinov2_model"; exit 1; }
 [ -f "$window_plan_json" ] || { echo "ERROR: Window plan missing at $window_plan_json"; exit 1; }
+[ -f "$story_library_file" ] || { echo "ERROR: Story library missing at $story_library_file"; exit 1; }
 
 source /apps/python/3.12-conda/etc/profile.d/conda.sh
 conda activate sceneweaver311
@@ -65,7 +68,11 @@ agent_max_iterations="${AGENT_MAX_ITERATIONS:-3}"
 agent_quality_threshold="${AGENT_QUALITY_THRESHOLD:-0.76}"
 agent_num_test_stories="${AGENT_NUM_TEST_STORIES:-}"
 
-storyline="${STORYLINE:-A thirsty crow searches for water, finds a clay pot, raises the water by dropping stones into it, and finally drinks.}"
+source "$story_library_file"
+storyline_from_library="${SHORT_STORIES[$selected_story]-}"
+[ -n "$storyline_from_library" ] || { echo "ERROR: Story key '$selected_story' not found in $story_library_file"; exit 1; }
+
+storyline="${STORYLINE:-$storyline_from_library}"
 style_prefix="${STYLE_PREFIX:-cinematic storybook realism, single black crow, expressive eyes, detailed feathers, clear beak actions, stable camera, coherent motion, detailed clay pot, visible stones, warm daylight, high detail}"
 negative_prompt="${NEGATIVE_PROMPT:-blurry, flicker, duplicate bird, extra birds, multiple crows, deformed beak, broken pot, background change, watermark, text, logo, collage, humans}"
 character_lock="${CHARACTER_LOCK:-keep one black crow consistent across all windows, with the same clay pot and the same dusty courtyard under the same tree.}"
@@ -73,7 +80,7 @@ character_lock="${CHARACTER_LOCK:-keep one black crow consistent across all wind
 reference_strength="${REFERENCE_STRENGTH:-0.68}"
 reference_tail_frames="${REFERENCE_TAIL_FRAMES:-4}"
 initial_image="${INITIAL_IMAGE:-${project_root}/thirsty_crow_start_image.png}"
-run_name_prefix="${RUN_NAME_PREFIX:-thirsty_crow_${pipeline_mode}}"
+run_name_prefix="${RUN_NAME_PREFIX:-${selected_story}_${pipeline_mode}}"
 output_dir="${OUTPUT_DIR:-${sceneweaver_runs_root}/${run_name_prefix}_$(date +%y%m%d_%H%M%S)}"
 
 if [ ! -f "$initial_image" ]; then
@@ -105,6 +112,7 @@ fi
 mkdir -p "$output_dir"
 
 echo "SceneWeaver pipeline mode: $pipeline_mode"
+echo "Selected story: $selected_story"
 echo "Output dir: $output_dir"
 
 if [ "$pipeline_mode" = "agents" ]; then
