@@ -12,7 +12,7 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
-export PIPELINE_MODE=core
+export PIPELINE_MODE=agents
 export STORYLINE="Two people respectfully discuss Hindu culture in the same temple courtyard."
 export WINDOW_PLAN_JSON="$project_root/configs/window_plans/hindu_culture_dialogue.json"
 export INITIAL_IMAGE="$project_root/default_start_image.png"

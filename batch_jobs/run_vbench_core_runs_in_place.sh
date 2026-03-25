@@ -1,7 +1,7 @@
 #!/bin/bash -l
-#SBATCH --job-name=vbench_all_arr
-#SBATCH --output=slurm_logs/vbench_all_arr_%A_%a.out
-#SBATCH --error=slurm_logs/vbench_all_arr_%A_%a.err
+#SBATCH --job-name=vbench_core_runs
+#SBATCH --output=/home/hpc/v123be/v123be36/Multimodal_Final_SceneWeaver/slurm_logs/vbench_core_runs_%A_%a.out
+#SBATCH --error=/home/hpc/v123be/v123be36/Multimodal_Final_SceneWeaver/slurm_logs/vbench_core_runs_%A_%a.err
 #SBATCH --time=10:00:00
 #SBATCH --partition=a40
 #SBATCH --gres=gpu:a40:1
@@ -12,13 +12,13 @@ set -euo pipefail
 
 PROJECT_ROOT="${PROJECT_ROOT:-/home/hpc/v123be/v123be36/Multimodal_Final_SceneWeaver}"
 COMBINED_SCRIPT="${COMBINED_SCRIPT:-${PROJECT_ROOT}/run_vbench_combined.sh}"
-ARRAY_INDEX="${ARRAY_INDEX:-${SLURM_ARRAY_TASK_ID:-0}}"
+ARRAY_INDEX="${SLURM_ARRAY_TASK_ID:-0}"
 
 RUN_DIRS=(
-  "/home/vault/v123be/v123be36/sceneweaver_runs/agents_fox_grapes_agents_a100_260321_220554"
-  "/home/vault/v123be/v123be36/sceneweaver_runs/agents_lion_mouse_agents_a100_260321_220526"
-  "/home/vault/v123be/v123be36/sceneweaver_runs/agents_thirsty_crow_agents_a100_260321_220515"
-  "/home/vault/v123be/v123be36/sceneweaver_runs/agents_tortoise_hare_agents_a100_260321_220555"
+  "/home/vault/v123be/v123be36/sceneweaver_runs/core_thirsty_crow_260319_225546"
+  "/home/vault/v123be/v123be36/sceneweaver_runs/core_tortoise_and_hare_260319_225652"
+  "/home/vault/v123be/v123be36/sceneweaver_runs/core_lion_and_mouse_260319_225545"
+  "/home/vault/v123be/v123be36/sceneweaver_runs/core_fox_and_grapes_260319_225547"
 )
 
 if [ "${ARRAY_INDEX}" -lt 0 ] || [ "${ARRAY_INDEX}" -ge "${#RUN_DIRS[@]}" ]; then
@@ -42,6 +42,11 @@ fi
 
 if [ ! -d "${TARGET_RUN_DIR}/clips" ]; then
   echo "Missing clips directory in run: ${TARGET_RUN_DIR}"
+  exit 1
+fi
+
+if [ ! -f "${TARGET_RUN_DIR}/run_log.jsonl" ]; then
+  echo "Missing run_log.jsonl in run: ${TARGET_RUN_DIR}"
   exit 1
 fi
 
@@ -84,7 +89,4 @@ echo "RUN_WINDOW_PROMPT=${RUN_WINDOW_PROMPT}"
 echo "RUN_CONTINUITY=${RUN_CONTINUITY}"
 echo "VIDEOBENCH_CONFIG_PATH=${VIDEOBENCH_CONFIG_PATH:-}"
 
-action_cmd=(bash "${COMBINED_SCRIPT}")
-printf 'COMMAND=%q ' "${action_cmd[@]}"
-printf '\n'
-exec "${action_cmd[@]}"
+exec bash "${COMBINED_SCRIPT}"

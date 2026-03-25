@@ -9,11 +9,6 @@
 
 set -euo pipefail
 
-COMMON_SLURM_ROOT="${COMMON_SLURM_ROOT:-${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}}}"
-COMMON_SLURM_SH="${COMMON_SLURM_ROOT}/slurm_common.sh"
-# shellcheck source=./slurm_common.sh
-source "${COMMON_SLURM_SH}"
-
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 
 DEFAULT_PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -21,17 +16,17 @@ PROJECT_ROOT="${PROJECT_ROOT:-${DEFAULT_PROJECT_ROOT}}"
 
 ENV_PATH="${ENV_PATH:-}"
 VENV_PATH="${VENV_PATH:-}"
-DEFAULT_ENV_PATH="${DEFAULT_ENV_PATH:-${SCENEWEAVER_DEFAULT_ENV}}"
+DEFAULT_ENV_PATH="${DEFAULT_ENV_PATH:-${SCENEWEAVER_DEFAULT_ENV:-sceneweaver_runtime}}"
 
-CONDA_SH="${CONDA_SH:-${SCENEWEAVER_CONDA_SH}}"
+CONDA_SH="${CONDA_SH:-${SCENEWEAVER_CONDA_SH:-/apps/python/3.12-conda/etc/profile.d/conda.sh}}"
 USE_MODULES="${USE_MODULES:-0}"
-PYTHON_MODULE="${PYTHON_MODULE:-${SCENEWEAVER_PYTHON_MODULE}}"
-CUDA_MODULE="${CUDA_MODULE:-${SCENEWEAVER_CUDA_MODULE}}"
+PYTHON_MODULE="${PYTHON_MODULE:-${SCENEWEAVER_PYTHON_MODULE:-}}"
+CUDA_MODULE="${CUDA_MODULE:-${SCENEWEAVER_CUDA_MODULE:-}}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 
 USE_PROXY="${USE_PROXY:-1}"
-PROXY_URL="${PROXY_URL:-${SCENEWEAVER_PROXY_URL}}"
-NO_PROXY="${NO_PROXY:-${SCENEWEAVER_NO_PROXY}}"
+PROXY_URL="${PROXY_URL:-${SCENEWEAVER_PROXY_URL:-}}"
+NO_PROXY="${NO_PROXY:-${SCENEWEAVER_NO_PROXY:-}}"
 
 UPGRADE_PIP="${UPGRADE_PIP:-0}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -55,7 +50,7 @@ STORY_SLUG="${STORY_SLUG:-}"
 RUN_NAME_BASE="${RUN_NAME_BASE:-}"
 
 VIDEOBENCH_BIN="${VIDEOBENCH_BIN:-videobench}"
-VIDEOBENCH_PACKAGE="${VIDEOBENCH_PACKAGE:-videobench}"
+VIDEOBENCH_PACKAGE="${VIDEOBENCH_PACKAGE:-git+https://github.com/Video-Bench/Video-Bench.git}"
 INSTALL_VIDEOBENCH="${INSTALL_VIDEOBENCH:-1}"
 VIDEOBENCH_EXTRA_PIP_PACKAGES="${VIDEOBENCH_EXTRA_PIP_PACKAGES:-}"
 VIDEOBENCH_CONFIG_PATH="${VIDEOBENCH_CONFIG_PATH:-}"
@@ -66,11 +61,16 @@ WINDOW_MODEL_NAME="${WINDOW_MODEL_NAME:-}"
 WINDOW_LINK_MODE="${WINDOW_LINK_MODE:-auto}"
 VIDEOBENCH_EXTRA_ARGS="${VIDEOBENCH_EXTRA_ARGS:-}"
 SKIP_MISSING_PROMPTS="${SKIP_MISSING_PROMPTS:-0}"
+VIDEOBENCH_LOCAL_SERVER_SCRIPT="${VIDEOBENCH_LOCAL_SERVER_SCRIPT:-${PROJECT_ROOT}/run_videobench_local_server.sh}"
+START_LOCAL_VIDEOBENCH_SERVER="${START_LOCAL_VIDEOBENCH_SERVER:-auto}"
+LOCAL_SERVER_WAIT_SECONDS="${LOCAL_SERVER_WAIT_SECONDS:-240}"
+LOCAL_SERVER_POLL_INTERVAL="${LOCAL_SERVER_POLL_INTERVAL:-2}"
+LOCAL_SERVER_API_KEY="${LOCAL_SERVER_API_KEY:-local-videobench}"
 
 VBENCH_BIN="${VBENCH_BIN:-vbench}"
 VBENCH_PACKAGE="${VBENCH_PACKAGE:-vbench}"
 INSTALL_VBENCH="${INSTALL_VBENCH:-1}"
-VBENCH_EXTRA_PIP_PACKAGES="${VBENCH_EXTRA_PIP_PACKAGES:-setuptools==80.9.0}"
+VBENCH_EXTRA_PIP_PACKAGES="${VBENCH_EXTRA_PIP_PACKAGES:-setuptools==59.6.0 scikit-build imageio imageio-ffmpeg}"
 VBENCH_DIMENSIONS="${VBENCH_DIMENSIONS:-subject_consistency,background_consistency,motion_smoothness,temporal_flickering}"
 CONTINUITY_MODE="${CONTINUITY_MODE:-custom_input}"
 SEQUENCE_MODE="${SEQUENCE_MODE:-concat_windows}"
@@ -125,6 +125,34 @@ ensure_python() {
   fi
 }
 
+install_videobench_from_repo() {
+  local repo_spec="$1"
+  local extra_packages="${2:-}"
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  local repo_url="${repo_spec#git+}"
+
+  echo "Cloning Video-Bench from ${repo_url}"
+  git clone --depth 1 "${repo_url}" "${tmp_dir}"
+
+  if [ -f "${tmp_dir}/requirements.txt" ]; then
+    sed -i 's/mkl-service==2\.4\.0/mkl-service==2.4.1/g' "${tmp_dir}/requirements.txt"
+    sed -i '/^pywin32==306$/d' "${tmp_dir}/requirements.txt"
+  fi
+
+  upgrade_pip_once
+  if [ -n "${extra_packages}" ]; then
+    # shellcheck disable=SC2206
+    local extra_arr=(${extra_packages})
+    "${PYTHON_BIN}" -m pip install --upgrade "${extra_arr[@]}"
+  fi
+  if [ -f "${tmp_dir}/requirements.txt" ]; then
+    "${PYTHON_BIN}" -m pip install --upgrade -r "${tmp_dir}/requirements.txt"
+  fi
+  "${PYTHON_BIN}" -m pip install --no-deps "${tmp_dir}"
+  rm -rf "${tmp_dir}"
+}
+
 install_if_missing() {
   local bin_name="$1"
   local install_flag="$2"
@@ -135,12 +163,16 @@ install_if_missing() {
     if [ "${install_flag}" = "1" ]; then
       echo "Executable not found: ${bin_name}"
       echo "Attempting install with package: ${package_name}"
-      upgrade_pip_once
-      "${PYTHON_BIN}" -m pip install --upgrade "${package_name}"
-      if [ -n "${extra_packages}" ]; then
-        # shellcheck disable=SC2206
-        local extra_arr=(${extra_packages})
-        "${PYTHON_BIN}" -m pip install --upgrade "${extra_arr[@]}"
+      if [[ "${package_name}" == git+https://github.com/Video-Bench/Video-Bench.git ]]; then
+        install_videobench_from_repo "${package_name}" "${extra_packages}"
+      else
+        upgrade_pip_once
+        if [ -n "${extra_packages}" ]; then
+          # shellcheck disable=SC2206
+          local extra_arr=(${extra_packages})
+          "${PYTHON_BIN}" -m pip install --upgrade "${extra_arr[@]}"
+        fi
+        "${PYTHON_BIN}" -m pip install --upgrade "${package_name}"
       fi
       hash -r
     fi
@@ -163,8 +195,8 @@ ensure_pkg_resources() {
   fi
 
   if [ "${DRY_RUN}" = "0" ] && ! "${PYTHON_BIN}" -c "import pkg_resources" >/dev/null 2>&1; then
-    echo "pkg_resources still missing; forcing setuptools==80.9.0"
-    "${PYTHON_BIN}" -m pip install --force-reinstall --no-deps "setuptools==80.9.0"
+    echo "pkg_resources still missing; forcing setuptools==59.6.0"
+    "${PYTHON_BIN}" -m pip install --force-reinstall --no-deps "setuptools==59.6.0"
   fi
 
   if [ "${DRY_RUN}" = "0" ] && ! "${PYTHON_BIN}" -c "import pkg_resources" >/dev/null 2>&1; then
@@ -293,6 +325,8 @@ if [ "${USE_PROXY}" = "1" ] && [ -n "${PROXY_URL}" ]; then
 fi
 
 ensure_python
+# shellcheck disable=SC1091
+source "${PROJECT_ROOT}/scripts/vbench_local_server_helpers.sh"
 bash -n "${BASH_SOURCE[0]}"
 
 TARGET_LABEL="<auto>"
@@ -348,6 +382,15 @@ fi
 
 WINDOW_RUN_NAME="${WINDOW_RUN_NAME:-videobench_window_prompt_${RUN_NAME_BASE}}"
 CONTINUITY_RUN_NAME="${CONTINUITY_RUN_NAME:-vbench_continuity_${RUN_NAME_BASE}}"
+COMPREHENSIVE_REPORT_ROOT="${COMPREHENSIVE_REPORT_ROOT:-${REPORT_ROOT}/combined}"
+COMPREHENSIVE_RUN_NAME="${COMPREHENSIVE_RUN_NAME:-combined_benchmark_${RUN_NAME_BASE}}"
+WINDOW_SUMMARY_PATH="${WINDOW_REPORT_ROOT}/${WINDOW_RUN_NAME}/summary.json"
+CONTINUITY_SUMMARY_PATH="${CONTINUITY_REPORT_ROOT}/${CONTINUITY_RUN_NAME}/summary.json"
+COMPREHENSIVE_SUMMARY_PATH="${COMPREHENSIVE_REPORT_ROOT}/${COMPREHENSIVE_RUN_NAME}/summary.json"
+COMPREHENSIVE_MD_PATH="${COMPREHENSIVE_REPORT_ROOT}/${COMPREHENSIVE_RUN_NAME}/comprehensive_report.md"
+WINDOW_EXIT_CODE=0
+CONTINUITY_EXIT_CODE=0
+COMPREHENSIVE_EXIT_CODE=0
 
 echo "PROJECT_ROOT=${PROJECT_ROOT}"
 echo "EVAL_TARGET=${TARGET_LABEL}"
@@ -360,60 +403,67 @@ echo "DRY_RUN=${DRY_RUN}"
 echo "WINDOW_INPUT=${RESOLVED_WINDOW_INPUT:-<auto/latest story run>}"
 echo "CONTINUITY_INPUT=${RESOLVED_CONTINUITY_INPUT:-<auto/latest story run>}"
 echo "REPORT_ROOT=${REPORT_ROOT}"
+echo "COMPREHENSIVE_REPORT_ROOT=${COMPREHENSIVE_REPORT_ROOT}"
 
 if [ "${RUN_WINDOW_PROMPT}" = "1" ]; then
   if [ -n "${RESOLVED_WINDOW_INPUT}" ] || [ -z "${EVAL_TARGET}" ]; then
     install_if_missing "${VIDEOBENCH_BIN}" "${INSTALL_VIDEOBENCH}" "${VIDEOBENCH_PACKAGE}" "${VIDEOBENCH_EXTRA_PIP_PACKAGES}"
+    "${PYTHON_BIN}" "scripts/12_patch_videobench_install.py"
 
     if [ "${DRY_RUN}" = "0" ] && [ -z "${VIDEOBENCH_CONFIG_PATH}" ]; then
       echo "VIDEOBENCH_CONFIG_PATH is required when running Video-Bench."
-      exit 1
-    fi
-
-    if [ "${DRY_RUN}" = "0" ] && [ ! -f "${VIDEOBENCH_CONFIG_PATH}" ]; then
+      WINDOW_EXIT_CODE=2
+    elif [ "${DRY_RUN}" = "0" ] && [ ! -f "${VIDEOBENCH_CONFIG_PATH}" ]; then
       echo "Video-Bench config path does not exist: ${VIDEOBENCH_CONFIG_PATH}"
-      exit 1
-    fi
+      WINDOW_EXIT_CODE=2
+    else
+      if [ "${DRY_RUN}" = "0" ]; then
+        maybe_start_local_videobench_server "${VIDEOBENCH_CONFIG_PATH}"
+      fi
+      WINDOW_CMD=("${PYTHON_BIN}" "scripts/10_eval_videobench_window_prompt.py"
+        --report_root "${WINDOW_REPORT_ROOT}"
+        --run_name "${WINDOW_RUN_NAME}"
+        --dimensions "${VIDEOBENCH_DIMENSIONS}"
+        --prompt_source "${WINDOW_PROMPT_SOURCE}"
+        --mode "${WINDOW_MODE}"
+        --model_name "${WINDOW_MODEL_NAME}"
+        --link_mode "${WINDOW_LINK_MODE}"
+        --videobench_bin "${VIDEOBENCH_BIN}"
+      )
 
-    WINDOW_CMD=("${PYTHON_BIN}" "scripts/10_eval_videobench_window_prompt.py"
-      --report_root "${WINDOW_REPORT_ROOT}"
-      --run_name "${WINDOW_RUN_NAME}"
-      --dimensions "${VIDEOBENCH_DIMENSIONS}"
-      --prompt_source "${WINDOW_PROMPT_SOURCE}"
-      --mode "${WINDOW_MODE}"
-      --model_name "${WINDOW_MODEL_NAME}"
-      --link_mode "${WINDOW_LINK_MODE}"
-      --videobench_bin "${VIDEOBENCH_BIN}"
-    )
+      if [ -n "${RESOLVED_WINDOW_INPUT}" ]; then
+        WINDOW_CMD+=(--videos_path "${RESOLVED_WINDOW_INPUT}")
+      fi
+      if [ -n "${VIDEOBENCH_CONFIG_PATH}" ]; then
+        WINDOW_CMD+=(--config_path "${VIDEOBENCH_CONFIG_PATH}")
+      fi
+      if [ "${SKIP_MISSING_PROMPTS}" = "1" ]; then
+        WINDOW_CMD+=(--skip_missing_prompts)
+      fi
+      if [ "${DRY_RUN}" = "1" ]; then
+        WINDOW_CMD+=(--dry_run)
+      fi
+      append_extra_args "${VIDEOBENCH_EXTRA_ARGS}" WINDOW_CMD
 
-    if [ -n "${RESOLVED_WINDOW_INPUT}" ]; then
-      WINDOW_CMD+=(--videos_path "${RESOLVED_WINDOW_INPUT}")
-    fi
-    if [ -n "${VIDEOBENCH_CONFIG_PATH}" ]; then
-      WINDOW_CMD+=(--config_path "${VIDEOBENCH_CONFIG_PATH}")
-    fi
-    if [ "${SKIP_MISSING_PROMPTS}" = "1" ]; then
-      WINDOW_CMD+=(--skip_missing_prompts)
-    fi
-    if [ "${DRY_RUN}" = "1" ]; then
-      WINDOW_CMD+=(--dry_run)
-    fi
-    append_extra_args "${VIDEOBENCH_EXTRA_ARGS}" WINDOW_CMD
+      echo "VIDEOBENCH_DIMENSIONS=${VIDEOBENCH_DIMENSIONS}"
+      echo "WINDOW_PROMPT_SOURCE=${WINDOW_PROMPT_SOURCE}"
+      echo "WINDOW_MODE=${WINDOW_MODE}"
+      echo "WINDOW_LINK_MODE=${WINDOW_LINK_MODE}"
+      echo "VIDEOBENCH_CONFIG_PATH=${VIDEOBENCH_CONFIG_PATH:-}"
+      printf 'WINDOW_COMMAND='
+      printf '%q ' "${WINDOW_CMD[@]}"
+      printf '\n'
 
-    echo "VIDEOBENCH_DIMENSIONS=${VIDEOBENCH_DIMENSIONS}"
-    echo "WINDOW_PROMPT_SOURCE=${WINDOW_PROMPT_SOURCE}"
-    echo "WINDOW_MODE=${WINDOW_MODE}"
-    echo "WINDOW_LINK_MODE=${WINDOW_LINK_MODE}"
-    echo "VIDEOBENCH_CONFIG_PATH=${VIDEOBENCH_CONFIG_PATH:-}"
-    printf 'WINDOW_COMMAND='
-    printf '%q ' "${WINDOW_CMD[@]}"
-    printf '\n'
-
-    "${WINDOW_CMD[@]}"
+      set +e
+      "${WINDOW_CMD[@]}"
+      WINDOW_EXIT_CODE=$?
+      set -e
+      echo "WINDOW_EXIT_CODE=${WINDOW_EXIT_CODE}"
+    fi
   else
     echo "Video-Bench window-prompt skipped: no story_run/clips metadata could be resolved for ${EVAL_TARGET}."
     if [ "${REQUIRE_WINDOW_PROMPT}" = "1" ]; then
-      exit 1
+      WINDOW_EXIT_CODE=2
     fi
   fi
 fi
@@ -457,5 +507,54 @@ if [ "${RUN_CONTINUITY}" = "1" ]; then
   printf '%q ' "${CONTINUITY_CMD[@]}"
   printf '\n'
 
+  set +e
   "${CONTINUITY_CMD[@]}"
+  CONTINUITY_EXIT_CODE=$?
+  set -e
+  echo "CONTINUITY_EXIT_CODE=${CONTINUITY_EXIT_CODE}"
 fi
+
+COMPREHENSIVE_CMD=("${PYTHON_BIN}" "scripts/11_generate_combined_benchmark_report.py"
+  --report_root "${COMPREHENSIVE_REPORT_ROOT}"
+  --run_name "${COMPREHENSIVE_RUN_NAME}"
+  --story_slug "${STORY_SLUG}"
+  --run_name_base "${RUN_NAME_BASE}"
+  --eval_target "${TARGET_LABEL}"
+  --window_enabled "${RUN_WINDOW_PROMPT}"
+  --continuity_enabled "${RUN_CONTINUITY}"
+  --window_exit_code "${WINDOW_EXIT_CODE}"
+  --continuity_exit_code "${CONTINUITY_EXIT_CODE}"
+)
+
+if [ -f "${WINDOW_SUMMARY_PATH}" ]; then
+  COMPREHENSIVE_CMD+=(--window_summary_path "${WINDOW_SUMMARY_PATH}")
+fi
+if [ -f "${CONTINUITY_SUMMARY_PATH}" ]; then
+  COMPREHENSIVE_CMD+=(--continuity_summary_path "${CONTINUITY_SUMMARY_PATH}")
+fi
+
+printf 'COMPREHENSIVE_COMMAND='
+printf '%q ' "${COMPREHENSIVE_CMD[@]}"
+printf '\n'
+
+set +e
+"${COMPREHENSIVE_CMD[@]}"
+COMPREHENSIVE_EXIT_CODE=$?
+set -e
+
+echo "COMPREHENSIVE_EXIT_CODE=${COMPREHENSIVE_EXIT_CODE}"
+echo "COMPREHENSIVE_SUMMARY_PATH=${COMPREHENSIVE_SUMMARY_PATH}"
+echo "COMPREHENSIVE_MD_PATH=${COMPREHENSIVE_MD_PATH}"
+
+FINAL_EXIT_CODE=0
+if [ "${WINDOW_EXIT_CODE}" -ne 0 ]; then
+  FINAL_EXIT_CODE="${WINDOW_EXIT_CODE}"
+fi
+if [ "${CONTINUITY_EXIT_CODE}" -ne 0 ]; then
+  FINAL_EXIT_CODE="${CONTINUITY_EXIT_CODE}"
+fi
+if [ "${COMPREHENSIVE_EXIT_CODE}" -ne 0 ]; then
+  FINAL_EXIT_CODE="${COMPREHENSIVE_EXIT_CODE}"
+fi
+
+exit "${FINAL_EXIT_CODE}"

@@ -1212,8 +1212,11 @@ def _resolve_selected_local_model_path(
 def _first_existing_path(paths: List[str]) -> Optional[str]:
     for raw_path in paths:
         path = Path(raw_path)
-        if path.exists():
-            return path.as_posix()
+        try:
+            if path.exists():
+                return path.as_posix()
+        except PermissionError:
+            continue
     return None
 
 
@@ -1700,23 +1703,23 @@ def main() -> None:
     resolved_local_embedding_id = _resolve_selected_local_model_path(selected_embedding_model, embedding_payload)
     local_llm_id = _first_existing_path([
         str(PROJECT_ROOT / "LLM_MODEL" / "Qwen2.5-3B-Instruct"),
-        "/home/vault/v123be/v123be37/Multimodal_Final_SceneWeaver/LLM_MODEL/Qwen2.5-3B-Instruct",
-        "/home/vault/v123be/v123be37/Multimodal_Final_SceneWeaver/models/Qwen2.5-1.5B-Instruct",
+        "/home/vault/v123be/v123be36/Multimodal_Final_SceneWeaver/LLM_MODEL/Qwen2.5-3B-Instruct",
+        "/home/vault/v123be/v123be36/Multimodal_Final_SceneWeaver/models/Qwen2.5-1.5B-Instruct",
     ]) or resolved_local_llm_id
     local_video_i2v_id = _first_existing_diffusers_model_path([
-        "/home/vault/v123be/v123be37/sceneweaver_models/Wan2.2-I2V-A14B-Diffusers",
-        "/home/vault/v123be/v123be37/sceneweaver_models/Wan2.1-I2V-14B-720P-Diffusers",
-        "/home/vault/v123be/v123be37/sceneweaver_models/Wan2.1-I2V-14B-480P-Diffusers",
+        "/home/vault/v123be/v123be36/sceneweaver_models/Wan2.2-I2V-A14B-Diffusers",
+        "/home/vault/v123be/v123be36/sceneweaver_models/Wan2.1-I2V-14B-720P-Diffusers",
+        "/home/vault/v123be/v123be36/sceneweaver_models/Wan2.1-I2V-14B-480P-Diffusers",
     ])
     local_video_t2v_id = _first_existing_path([
-        "/home/vault/v123be/v123be37/Wan2.1-T2V-1.3B-Diffusers",
-        "/home/vault/v123be/v123be37/Multimodal_Final_SceneWeaver/models/VIDEO_GENERATIVE_BACKBONE/Wan2.1-T2V-1.3B-Diffusers",
+        "/home/vault/v123be/v123be36/Wan2.1-T2V-1.3B-Diffusers",
+        "/home/vault/v123be/v123be36/Multimodal_Final_SceneWeaver/models/VIDEO_GENERATIVE_BACKBONE/Wan2.1-T2V-1.3B-Diffusers",
         str(PROJECT_ROOT / "models" / "VIDEO_GENERATIVE_BACKBONE" / "Wan2.1-T2V-1.3B-Diffusers"),
         str(PROJECT_ROOT / "VIDEO_GENERATIVE_BACKBONE" / "Wan2.1-T2V-1.3B-Diffusers"),
     ]) or resolved_local_video_id
     local_embedding_dinov2_id = _first_existing_path([
-        "/home/vault/v123be/v123be37/facebook/dinov2-base",
-        "/home/vault/v123be/v123be37/facebook/dinov2-small",
+        "/home/vault/v123be/v123be36/facebook/dinov2-base",
+        "/home/vault/v123be/v123be36/facebook/dinov2-small",
         str(PROJECT_ROOT / "Globa_Local_Emb_Feedback" / "dinov2-base"),
         str(PROJECT_ROOT / "Globa_Local_Emb_Feedback" / "dinov2-small"),
     ]) or resolved_local_embedding_id

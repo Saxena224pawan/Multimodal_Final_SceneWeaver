@@ -14,7 +14,7 @@ cd "${project_root}"
 
 mkdir -p slurm_logs outputs .hf
 
-hpc_vault_root="${HPC_VAULT_ROOT:-/home/vault/v123be/v123be37}"
+hpc_vault_root="${HPC_VAULT_ROOT:-/home/vault/v123be/v123be36}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export PYTHONNOUSERSITE=1
 unset PYTHONPATH
@@ -25,8 +25,10 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export DIFFUSERS_OFFLINE=1
 
-source /apps/python/3.12-conda/etc/profile.d/conda.sh
-conda activate sceneweaver311
+conda_sh="${CONDA_SH:-/apps/python/3.12-conda/etc/profile.d/conda.sh}"
+env_name="${ENV_NAME:-sceneweaver_runtime}"
+source "${conda_sh}"
+conda activate "${env_name}"
 python_bin="$(which python)"
 
 story_file="${1:-data/stories/story_01.txt}"

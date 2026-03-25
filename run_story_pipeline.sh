@@ -14,7 +14,7 @@ cd "${project_root}"
 
 mkdir -p slurm_logs outputs .hf
 
-hpc_vault_root="${HPC_VAULT_ROOT:-/home/vault/v123be/v123be37}"
+hpc_vault_root="${HPC_VAULT_ROOT:-/home/vault/v123be/v123be36}"
 sceneweaver_runs_root="${SCENEWEAVER_RUNS_ROOT:-${hpc_vault_root}/sceneweaver_runs}"
 mkdir -p "${sceneweaver_runs_root}"
 
@@ -26,7 +26,7 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export DIFFUSERS_OFFLINE=1
 
-pipeline_mode="${PIPELINE_MODE:-core}"
+pipeline_mode="${PIPELINE_MODE:-agents}"
 wan_model="${WAN_MODEL:-${hpc_vault_root}/sceneweaver_models/Wan2.2-I2V-A14B-Diffusers}"
 director_model="${DIRECTOR_MODEL:-${hpc_vault_root}/Multimodal_Final_SceneWeaver/LLM_MODEL/Qwen2.5-3B-Instruct}"
 dinov2_model="${DINOV2_MODEL:-${hpc_vault_root}/facebook/dinov2-base}"
@@ -40,8 +40,10 @@ selected_story="${SELECTED_STORY:-thirsty_crow}"
 [ -f "$window_plan_json" ] || { echo "ERROR: Window plan missing at $window_plan_json"; exit 1; }
 [ -f "$story_library_file" ] || { echo "ERROR: Story library missing at $story_library_file"; exit 1; }
 
-source /apps/python/3.12-conda/etc/profile.d/conda.sh
-conda activate sceneweaver311
+conda_sh="${CONDA_SH:-/apps/python/3.12-conda/etc/profile.d/conda.sh}"
+env_name="${ENV_NAME:-sceneweaver_runtime}"
+source "${conda_sh}"
+conda activate "${env_name}"
 python_bin="$(which python)"
 
 total_minutes="${TOTAL_MINUTES:-0.8}"

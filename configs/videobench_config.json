@@ -1,0 +1,6 @@
+{
+  "GPT4o_API_KEY": "your_gpt4o_api_key",
+  "GPT4o_BASE_URL": "https://api.openai.com/v1",
+  "GPT4o_mini_API_KEY": "your_gpt4o_mini_api_key",
+  "GPT4o_mini_BASE_URL": "https://api.openai.com/v1"
+}

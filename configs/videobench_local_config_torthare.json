@@ -1,0 +1,8 @@
+{
+  "GPT4o_API_KEY": "local-videobench",
+  "GPT4o_BASE_URL": "http://127.0.0.1:8004/v1",
+  "GPT4o_MODEL": "Qwen2.5-VL-7B-Instruct",
+  "GPT4o_mini_API_KEY": "local-videobench",
+  "GPT4o_mini_BASE_URL": "http://127.0.0.1:8004/v1",
+  "GPT4o_mini_MODEL": "Qwen2.5-VL-7B-Instruct"
+}

@@ -85,7 +85,7 @@ class WanBackbone:
                 "Example: pip install -U 'diffusers>=0.30' transformers accelerate"
             ) from exc
         try:
-            from diffusers import WanImageToVideoPipeline
+            from diffusers import DiffusionPipeline
         except Exception as exc:
             detail = str(exc)
             xformers_hint = ""
@@ -95,15 +95,15 @@ class WanBackbone:
                     "Uninstall xformers or install a build matching this torch/cuda runtime."
                 )
             raise ImportError(
-                "Could not import WanImageToVideoPipeline from diffusers." f"{xformers_hint}"
+                "Could not import DiffusionPipeline from diffusers." f"{xformers_hint}"
             ) from exc
-        return torch, WanImageToVideoPipeline
+        return torch, DiffusionPipeline
 
     def load(self):
-        torch, WanImageToVideoPipeline = self._validate_runtime_dependencies()
+        torch, DiffusionPipeline = self._validate_runtime_dependencies()
 
         torch_dtype = self._get_torch_dtype(torch)
-        pipe = WanImageToVideoPipeline.from_pretrained(
+        pipe = DiffusionPipeline.from_pretrained(
             self.config.model_id,
             torch_dtype=torch_dtype,
         )

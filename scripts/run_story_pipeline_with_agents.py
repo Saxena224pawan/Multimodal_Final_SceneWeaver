@@ -63,8 +63,8 @@ def maybe_init_embedder(
 def _default_local_director_model_id() -> Optional[str]:
     candidates = [
         PROJECT_ROOT / "LLM_MODEL" / "Qwen2.5-3B-Instruct",
-        Path("/home/vault/v123be/v123be37/Multimodal_Final_SceneWeaver/LLM_MODEL/Qwen2.5-3B-Instruct"),
-        Path("/home/vault/v123be/v123be37/Multimodal_Final_SceneWeaver/models/Qwen2.5-1.5B-Instruct"),
+        Path("/home/vault/v123be/v123be36/Multimodal_Final_SceneWeaver/LLM_MODEL/Qwen2.5-3B-Instruct"),
+        Path("/home/vault/v123be/v123be36/Multimodal_Final_SceneWeaver/models/Qwen2.5-1.5B-Instruct"),
     ]
     for path in candidates:
         if path.is_dir():
@@ -76,8 +76,8 @@ def _default_local_embedding_model_id(backend: str) -> Optional[str]:
     if backend != "dinov2":
         return None
     candidates = [
-        Path("/home/vault/v123be/v123be37/facebook/dinov2-base"),
-        Path("/home/vault/v123be/v123be37/facebook/dinov2-small"),
+        Path("/home/vault/v123be/v123be36/facebook/dinov2-base"),
+        Path("/home/vault/v123be/v123be36/facebook/dinov2-small"),
         PROJECT_ROOT / "Globa_Local_Emb_Feedback" / "dinov2-base",
         PROJECT_ROOT / "Globa_Local_Emb_Feedback" / "dinov2-small",
     ]

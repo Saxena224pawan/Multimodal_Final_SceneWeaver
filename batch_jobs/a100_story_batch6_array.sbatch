@@ -4,8 +4,8 @@
 #SBATCH --error=slurm_logs/sceneweaver_batch6_%A_%a.err
 #SBATCH --time=08:00:00
 #SBATCH --partition=a100
-#SBATCH --gres=gpu:a100:1
-#SBATCH --cpus-per-task=12
+#SBATCH --gres=gpu:a100:2
+#SBATCH --cpus-per-task=16
 #SBATCH --array=1-6%6
 
 set -euo pipefail
@@ -15,7 +15,7 @@ cd "$project_root"
 
 mkdir -p slurm_logs outputs .hf
 
-hpc_vault_root="${HPC_VAULT_ROOT:-/home/vault/v123be/v123be37}"
+hpc_vault_root="${HPC_VAULT_ROOT:-/home/vault/v123be/v123be36}"
 sceneweaver_runs_root="${SCENEWEAVER_RUNS_ROOT:-${hpc_vault_root}/sceneweaver_runs}"
 batch_root="${OUTPUT_ROOT:-${sceneweaver_runs_root}/story_batch6_array_${SLURM_ARRAY_JOB_ID}}"
 
@@ -56,8 +56,10 @@ captioner_model_id="${CAPTIONER_MODEL_ID:-none}"
 [ -d "$director_model" ] || { echo "ERROR: director model missing at $director_model"; exit 1; }
 [ -d "$embedding_model" ] || { echo "ERROR: embedding model missing at $embedding_model"; exit 1; }
 
-source /apps/python/3.12-conda/etc/profile.d/conda.sh
-conda activate sceneweaver311
+conda_sh="${CONDA_SH:-/apps/python/3.12-conda/etc/profile.d/conda.sh}"
+env_name="${ENV_NAME:-sceneweaver_runtime}"
+source "${conda_sh}"
+conda activate "${env_name}"
 
 export PYTHONUNBUFFERED=1
 export HF_HOME="${project_root}/.hf"
