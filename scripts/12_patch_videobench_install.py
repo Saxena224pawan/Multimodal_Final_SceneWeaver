@@ -163,72 +163,53 @@ def patch_video_text_alignment(root: Path) -> bool:
             text = text.replace(old_line, new_line)
             changed = True
 
-    old_extract = """def extract_content_from_result(final_result):
+    desired_extract = """def extract_content_from_result(final_result, max_score=3):
     text = str(final_result or "")
 
-    start_index = text.find("Updated Video Description")
-    if start_index != -1:
-        all_content = text[start_index + len("Updated Video Description"):].strip()
-        eval_result_index = all_content.find("Evaluation Result")
-        if eval_result_index != -1:
-            remaining_content = all_content[eval_result_index + len("Evaluation Result"):].strip()
-            because_index = remaining_content.lower().find("because")
-            target = remaining_content if because_index == -1 else remaining_content[:because_index].strip()
-            matches = re.findall(r"(?<!\\d)(10|[0-9])(?!\\d)", target)
-            if matches:
-                return int(matches[-1])
-
-    patterns = [
-        r"(?i)evaluation\\s*result[^0-9]{0,20}(10|[0-9])",
-        r"(?i)score[^0-9]{0,20}(10|[0-9])",
-        r"(?i)rating[^0-9]{0,20}(10|[0-9])",
-        r"(?i)overall[^0-9]{0,20}(10|[0-9])",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            return int(match.group(1))
-
-    matches = re.findall(r"(?<!\\d)(10|[0-9])(?!\\d)", text)
-    if matches:
-        return int(matches[-1])
-
-    print("No information found.")
-    return 0
-"""
-    new_extract = """def extract_content_from_result(final_result):
-    text = str(final_result or "")
+    def normalize_score(raw):
+        try:
+            numeric_value = int(str(raw).strip())
+        except Exception:
+            return None
+        if numeric_value < 1:
+            return None
+        if numeric_value > max_score:
+            if numeric_value <= 5:
+                return max_score
+            return None
+        return numeric_value
 
     def parse_segment(segment):
         candidate = str(segment or "").strip()
         if not candidate:
             return None
-        if candidate in {"1", "2", "3"}:
-            return int(candidate)
+
+        direct = normalize_score(candidate)
+        if direct is not None:
+            return direct
 
         patterns = [
-            r"(?im)^\\s*\\[?evaluation\\s*result\\]?\\s*[:\\-]?\\s*([123])\\b",
-            r"(?im)^\\s*\\[?score\\]?\\s*[:\\-]?\\s*([123])\\b",
-            r"(?im)^\\s*\\[?rating\\]?\\s*[:\\-]?\\s*([123])\\b",
-            r"(?im)^\\s*\\[?overall\\]?\\s*[:\\-]?\\s*([123])\\b",
-            r"(?im)^\\s*([123])\\s*(?:because\\b|$)",
-            r"(?i)\\(\\s*\\[[^\\]]+\\]\\s*:\\s*([123])\\b",
-            r"(?i)\\bevaluation\\s*result\\b[^0-9]{0,20}([123])\\b",
-            r"(?i)\\bscore\\b[^0-9]{0,20}([123])\\b",
-            r"(?i)\\brating\\b[^0-9]{0,20}([123])\\b",
-            r"(?i)\\boverall\\b[^0-9]{0,20}([123])\\b",
+            r"(?im)^\\s*\\[?evaluation\\s*result\\]?\\s*[:\\-]?\\s*([1-5])\\b",
+            r"(?im)^\\s*\\[?score\\]?\\s*[:\\-]?\\s*([1-5])\\b",
+            r"(?im)^\\s*\\[?rating\\]?\\s*[:\\-]?\\s*([1-5])\\b",
+            r"(?im)^\\s*\\[?overall\\]?\\s*[:\\-]?\\s*([1-5])\\b",
+            r"(?im)^\\s*([1-5])\\s*(?:because\\b|$)",
+            r"(?i)\\(\\s*(?:\\[[^\\]]+\\]|[^()\\n]+?)\\)\\s*:\\s*([1-5])\\b",
+            r"(?i)\\(\\s*(?:\\[[^\\]]+\\]|[^():\\n]+?)\\s*:\\s*([1-5])\\b",
+            r"(?i)\\bevaluation\\s*result\\b[\\s\\S]{0,200}?\\(\\s*(?:\\[[^\\]]+\\]|[^()\\n]+?)\\)\\s*:\\s*([1-5])\\b",
+            r"(?i)\\bevaluation\\s*result\\b[\\s\\S]{0,200}?\\(\\s*(?:\\[[^\\]]+\\]|[^():\\n]+?)\\s*:\\s*([1-5])\\b",
+            r"(?i)\\bevaluation\\s*result\\b[^0-9]{0,50}([1-5])\\b",
+            r"(?i)\\bscore\\b[^0-9]{0,50}([1-5])\\b",
+            r"(?i)\\brating\\b[^0-9]{0,50}([1-5])\\b",
+            r"(?i)\\boverall\\b[^0-9]{0,50}([1-5])\\b",
         ]
         for pattern in patterns:
             match = re.search(pattern, candidate)
             if not match:
                 continue
-            value = match.group(match.lastindex or 0)
-            try:
-                numeric_value = int(value)
-            except Exception:
-                continue
-            if 1 <= numeric_value <= 3:
-                return numeric_value
+            normalized = normalize_score(match.group(match.lastindex or 0))
+            if normalized is not None:
+                return normalized
         return None
 
     segments = []
@@ -251,13 +232,27 @@ def patch_video_text_alignment(root: Path) -> bool:
     print("No information found.")
     return 0
 """
-    if old_extract in text:
-        text = text.replace(old_extract, new_extract, 1)
+    extract_start = text.find("def extract_content_from_result(")
+    if extract_start == -1:
+        raise RuntimeError(f"Unable to find extract_content_from_result in {path}")
+    extract_end = text.find("\n\ndef eval(", extract_start)
+    if extract_end == -1:
+        raise RuntimeError(f"Unable to find end of extract_content_from_result in {path}")
+    current_extract = text[extract_start:extract_end]
+    if current_extract != desired_extract.rstrip():
+        text = text[:extract_start] + desired_extract.rstrip() + text[extract_end:]
+        changed = True
+
+    old_call = "                content_score = extract_content_from_result(final_result)"
+    new_call = "                max_score = 5 if dimension in {'video-text consistency', 'overall_consistency'} else 3\n                content_score = extract_content_from_result(final_result, max_score=max_score)"
+    if new_call not in text:
+        if old_call not in text:
+            raise RuntimeError(f"Unable to find score extraction call in {path}")
+        text = text.replace(old_call, new_call, 1)
         changed = True
 
     path.write_text(text, encoding="utf-8")
     return changed
-
 
 def patch_openai_eval_module(path: Path) -> bool:
     text = path.read_text(encoding="utf-8")

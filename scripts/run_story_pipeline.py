@@ -647,7 +647,7 @@ def _retry_convergence_status(
         return False, ""
     recent = [float(score) for score in score_history[-(int(patience) + 1) :]]
     if max(recent) - min(recent) <= max(0.0, float(tolerance)):
-        return True, "score_plateau"
+        return False, "score_plateau"
     return False, ""
 
 
@@ -2319,6 +2319,12 @@ def main() -> None:
                         selected = best_attempt
                     convergence_reason = attempt_reason or convergence_reason
                     break
+                if attempt_reason == "score_plateau":
+                    print(
+                        "  Continuity score plateaued below threshold "
+                        f"({best_attempt['selection_score']:.3f} < {float(args.continuity_min_score):.3f}); "
+                        "continuing retries"
+                    )
                 repair_notes = [
                     best_attempt["critic_feedback"],
                     best_attempt.get("semantic_feedback", ""),

@@ -213,7 +213,7 @@ class RefinementEngine:
             return False, ""
         recent = [float(score) for score in score_history[-(self.convergence_patience + 1) :]]
         if max(recent) - min(recent) <= max(0.0, self.convergence_tolerance):
-            return True, "score_plateau"
+            return False, "score_plateau"
         return False, ""
 
     def _generate_video(
@@ -410,6 +410,11 @@ class RefinementEngine:
                 else:
                     print(f"  ✅ SCORE PLATEAU DETECTED ({aggregate_score:.3f})")
                 break
+            if convergence_reason == "score_plateau":
+                print(
+                    "  ⚠️  SCORE PLATEAU DETECTED BELOW THRESHOLD "
+                    f"({aggregate_score:.3f} < {self.quality_threshold}); continuing refinement"
+                )
 
             if iteration == effective_max_iterations - 1:
                 print("  ⚠️  MAX ITERATIONS REACHED")
