@@ -19,6 +19,47 @@ sbatch --partition=a40 --gres=gpu:a40:1 \
   run_story_pipeline.sh
 ```
 
+## Representative Full-Story Demos
+The gallery below uses one representative `Fox and Grapes` full-story video for each active variant. Each poster is tracked in the repository and links to the corresponding MP4, so the demos remain visible from GitHub.
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="./assets/github_demos/simple_t2v_fox_and_grapes.mp4">
+        <img src="./assets/github_demos/simple_t2v_fox_and_grapes.jpg" alt="simple_t2v full story demo" width="220"><br>
+        <code>simple_t2v</code>
+      </a>
+    </td>
+    <td align="center">
+      <a href="./assets/github_demos/core_t2v_fox_and_grapes.mp4">
+        <img src="./assets/github_demos/core_t2v_fox_and_grapes.jpg" alt="core_t2v full story demo" width="220"><br>
+        <code>core_t2v</code>
+      </a>
+    </td>
+    <td align="center">
+      <a href="./assets/github_demos/agentic_t2v_fox_and_grapes.mp4">
+        <img src="./assets/github_demos/agentic_t2v_fox_and_grapes.jpg" alt="agentic_t2v full story demo" width="220"><br>
+        <code>agentic_t2v</code>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="./assets/github_demos/core_i2v_fox_and_grapes.mp4">
+        <img src="./assets/github_demos/core_i2v_fox_and_grapes.jpg" alt="core_i2v full story demo" width="220"><br>
+        <code>core_i2v</code>
+      </a>
+    </td>
+    <td align="center">
+      <a href="./assets/github_demos/agentic_i2v_fox_and_grapes.mp4">
+        <img src="./assets/github_demos/agentic_i2v_fox_and_grapes.jpg" alt="agentic_i2v full story demo" width="220"><br>
+        <code>agentic_i2v</code>
+      </a>
+    </td>
+    <td></td>
+  </tr>
+</table>
+
 ## Architecture (Active Path)
 1. Storyline is split into time windows by `SceneDirector`.
 2. Each window prompt is refined with continuity context.

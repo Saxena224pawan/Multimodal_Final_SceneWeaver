@@ -434,6 +434,9 @@ if [ "${RUN_WINDOW_PROMPT}" = "1" ]; then
       if [ -n "${RESOLVED_WINDOW_INPUT}" ]; then
         WINDOW_CMD+=(--videos_path "${RESOLVED_WINDOW_INPUT}")
       fi
+      if [ -n "${STORY_RUN_DIR}" ]; then
+        WINDOW_CMD+=(--story_run_dir "${STORY_RUN_DIR}")
+      fi
       if [ -n "${VIDEOBENCH_CONFIG_PATH}" ]; then
         WINDOW_CMD+=(--config_path "${VIDEOBENCH_CONFIG_PATH}")
       fi
@@ -466,6 +469,12 @@ if [ "${RUN_WINDOW_PROMPT}" = "1" ]; then
       WINDOW_EXIT_CODE=2
     fi
   fi
+fi
+
+if [ -n "${local_videobench_server_pid:-}" ]; then
+  echo "Stopping local Video-Bench server before continuity evaluation."
+  stop_local_videobench_server
+  local_videobench_server_pid=""
 fi
 
 if [ "${RUN_CONTINUITY}" = "1" ]; then

@@ -60,6 +60,8 @@ PROMPT_SOURCE_ORDER = (
     "prompt_seed",
     "beat",
 )
+SHORT_STORY_LIBRARY_PATH = ROOT / "configs" / "stories" / "short_stories.sh"
+SHORT_STORY_ENTRY_RE = re.compile(r'^\[(?P<key>[^\]]+)\]="(?P<text>.*)"$')
 
 
 def parse_dimensions(raw: str) -> List[str]:
@@ -92,6 +94,27 @@ def normalize_prompt(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "")).strip()
 
 
+def load_short_story_library(path: Path = SHORT_STORY_LIBRARY_PATH) -> Dict[str, str]:
+    stories: Dict[str, str] = {}
+    if not path.is_file():
+        return stories
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        match = SHORT_STORY_ENTRY_RE.match(line)
+        if match is None:
+            continue
+        stories[match.group("key")] = normalize_prompt(match.group("text"))
+    return stories
+
+
+def infer_story_key_from_run_dir(run_dir: Path, candidate_keys: Sequence[str]) -> str:
+    name = run_dir.name
+    matches = [key for key in candidate_keys if key and key in name]
+    if len(matches) == 1:
+        return matches[0]
+    return ""
+
+
 def find_latest_story_run(outputs_root: Path) -> Path:
     candidates = sorted(
         [p for p in outputs_root.glob("story_run*") if p.is_dir()],
@@ -110,10 +133,18 @@ def find_latest_story_run(outputs_root: Path) -> Path:
     )
 
 
-def resolve_story_run_layout(path: Path) -> Tuple[Path, Path]:
+def resolve_story_run_layout(path: Path, story_run_dir_override: Optional[Path] = None) -> Tuple[Path, Path]:
     resolved = path.resolve()
     if not resolved.exists():
         raise FileNotFoundError(f"Input path does not exist: {resolved.as_posix()}")
+    if resolved.is_file():
+        if story_run_dir_override is not None:
+            run_dir = story_run_dir_override.resolve()
+        else:
+            run_dir = resolved.parent
+        if not run_dir.exists() or not run_dir.is_dir():
+            raise FileNotFoundError(f"Story run directory does not exist: {run_dir.as_posix()}")
+        return run_dir, resolved
     if resolved.is_dir() and resolved.name == "clips":
         return resolved.parent, resolved
     clips_dir = resolved / "clips"
@@ -280,6 +311,56 @@ def collect_window_records(
         "skipped_missing_prompts": len(missing_prompt_windows) if skip_missing_prompts else 0,
     }
     return prepared, meta
+
+
+def collect_story_record(
+    *,
+    run_dir: Path,
+    video_path: Path,
+) -> Tuple[List[dict], Dict[str, object]]:
+    summary = {}
+    prompt_metadata_source = ""
+    for summary_path in (run_dir / "run_summary.json", run_dir / "summary.json"):
+        if not summary_path.is_file():
+            continue
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        prompt_metadata_source = summary_path.as_posix()
+        break
+
+    storyline = normalize_prompt(str(summary.get("storyline", "")))
+    prompt_source = "storyline"
+    if not storyline:
+        short_stories = load_short_story_library()
+        story_key = normalize_prompt(str(summary.get("story_key", "")))
+        if not story_key:
+            story_key = infer_story_key_from_run_dir(run_dir, short_stories.keys())
+        storyline = normalize_prompt(short_stories.get(story_key, ""))
+        if storyline:
+            prompt_source = "story_library"
+            prompt_metadata_source = SHORT_STORY_LIBRARY_PATH.as_posix()
+
+    if not storyline:
+        raise RuntimeError(
+            f"Could not recover full-story prompt for {run_dir.as_posix()} from run_summary.json, summary.json, or {SHORT_STORY_LIBRARY_PATH.as_posix()}."
+        )
+
+    record = {
+        "window_index": 0,
+        "clip_path": video_path.resolve().as_posix(),
+        "prompt_text": storyline,
+        "prompt_source": prompt_source,
+        "beat": storyline,
+    }
+    meta = {
+        "run_log_path": "",
+        "prompt_metadata_source": prompt_metadata_source,
+        "source_prompt_counts": {prompt_source: 1},
+        "total_window_clips": 1,
+        "prepared_windows": 1,
+        "skipped_missing_prompts": 0,
+        "input_mode": "full_story_video",
+    }
+    return [record], meta
 
 
 def materialize_video(src: Path, dst: Path, link_mode: str) -> str:
@@ -525,9 +606,15 @@ def main() -> None:
         type=str,
         default="",
         help=(
-            "Story run directory containing clips/ and run_log.jsonl, or the clips/ directory itself. "
-            "If empty, the latest outputs/story_run*/ directory is used."
+            "Story run directory containing clips/ and run_log.jsonl, the clips/ directory itself, "
+            "or a single full-story video file. If empty, the latest outputs/story_run*/ directory is used."
         ),
+    )
+    parser.add_argument(
+        "--story_run_dir",
+        type=str,
+        default="",
+        help="Optional explicit story run directory. Required when --videos_path points to a full-story video outside the run dir.",
     )
     parser.add_argument(
         "--outputs_root",
@@ -623,17 +710,26 @@ def main() -> None:
     extra_args = parse_extra_args(args.extra_arg)
 
     if args.videos_path.strip():
-        story_run_dir, clips_dir = resolve_story_run_layout(Path(args.videos_path))
+        story_run_override = Path(args.story_run_dir).expanduser().resolve() if args.story_run_dir.strip() else None
+        story_run_dir, clips_or_video_path = resolve_story_run_layout(Path(args.videos_path), story_run_override)
     else:
         story_run_dir = find_latest_story_run(outputs_root)
-        _, clips_dir = resolve_story_run_layout(story_run_dir)
+        _, clips_or_video_path = resolve_story_run_layout(story_run_dir)
 
-    records, prompt_meta = collect_window_records(
-        run_dir=story_run_dir,
-        clips_dir=clips_dir,
-        prompt_source=args.prompt_source,
-        skip_missing_prompts=bool(args.skip_missing_prompts),
-    )
+    if clips_or_video_path.is_file():
+        records, prompt_meta = collect_story_record(
+            run_dir=story_run_dir,
+            video_path=clips_or_video_path,
+        )
+        clips_dir = clips_or_video_path
+    else:
+        clips_dir = clips_or_video_path
+        records, prompt_meta = collect_window_records(
+            run_dir=story_run_dir,
+            clips_dir=clips_dir,
+            prompt_source=args.prompt_source,
+            skip_missing_prompts=bool(args.skip_missing_prompts),
+        )
 
     model_name = slugify(args.model_name.strip() or story_run_dir.name, fallback="sceneweaver_windows")
     prepared_dataset_root, prepared_model_dir, prompt_file_path, manifest = prepare_videobench_dataset(
