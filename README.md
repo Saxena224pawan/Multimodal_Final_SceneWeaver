@@ -21,6 +21,7 @@ sbatch --partition=a40 --gres=gpu:a40:1 \
 
 ## Representative Full-Story Demos
 The gallery below uses one representative `Fox and Grapes` full-story video for each active variant. Each preview loops like a GIF on GitHub and links to the corresponding MP4.
+For actual embedded autoplaying MP4 playback, use the separate GitHub Pages gallery served from `docs/index.html`.
 
 <table>
   <tr>
