@@ -20,25 +20,25 @@ sbatch --partition=a40 --gres=gpu:a40:1 \
 ```
 
 ## Representative Full-Story Demos
-The gallery below uses one representative `Fox and Grapes` full-story video for each active variant. Each poster is tracked in the repository and links to the corresponding MP4, so the demos remain visible from GitHub.
+The gallery below uses one representative `Fox and Grapes` full-story video for each active variant. Each preview loops like a GIF on GitHub and links to the corresponding MP4.
 
 <table>
   <tr>
     <td align="center">
       <a href="./assets/github_demos/simple_t2v_fox_and_grapes.mp4">
-        <img src="./assets/github_demos/simple_t2v_fox_and_grapes.jpg" alt="simple_t2v full story demo" width="220"><br>
+        <img src="./assets/github_demos/simple_t2v_fox_and_grapes_preview.gif" alt="simple_t2v full story demo" width="220"><br>
         <code>simple_t2v</code>
       </a>
     </td>
     <td align="center">
       <a href="./assets/github_demos/core_t2v_fox_and_grapes.mp4">
-        <img src="./assets/github_demos/core_t2v_fox_and_grapes.jpg" alt="core_t2v full story demo" width="220"><br>
+        <img src="./assets/github_demos/core_t2v_fox_and_grapes_preview.gif" alt="core_t2v full story demo" width="220"><br>
         <code>core_t2v</code>
       </a>
     </td>
     <td align="center">
       <a href="./assets/github_demos/agentic_t2v_fox_and_grapes.mp4">
-        <img src="./assets/github_demos/agentic_t2v_fox_and_grapes.jpg" alt="agentic_t2v full story demo" width="220"><br>
+        <img src="./assets/github_demos/agentic_t2v_fox_and_grapes_preview.gif" alt="agentic_t2v full story demo" width="220"><br>
         <code>agentic_t2v</code>
       </a>
     </td>
@@ -46,13 +46,13 @@ The gallery below uses one representative `Fox and Grapes` full-story video for 
   <tr>
     <td align="center">
       <a href="./assets/github_demos/core_i2v_fox_and_grapes.mp4">
-        <img src="./assets/github_demos/core_i2v_fox_and_grapes.jpg" alt="core_i2v full story demo" width="220"><br>
+        <img src="./assets/github_demos/core_i2v_fox_and_grapes_preview.gif" alt="core_i2v full story demo" width="220"><br>
         <code>core_i2v</code>
       </a>
     </td>
     <td align="center">
       <a href="./assets/github_demos/agentic_i2v_fox_and_grapes.mp4">
-        <img src="./assets/github_demos/agentic_i2v_fox_and_grapes.jpg" alt="agentic_i2v full story demo" width="220"><br>
+        <img src="./assets/github_demos/agentic_i2v_fox_and_grapes_preview.gif" alt="agentic_i2v full story demo" width="220"><br>
         <code>agentic_i2v</code>
       </a>
     </td>
