@@ -2,52 +2,52 @@
 
 ## Scope and Goal
 
-This report evaluates full-story benchmark results for the origin/pavan SceneWeaver runs. The comparison spans three control strategies, `simple`, `core`, and `agentic`, and two conditioning backbones, text-to-video (T2V) and image-to-video (I2V), on four short narrative tasks: Fox and Grapes, Lion and Mouse, Thirsty Crow, and Tortoise and Hare. All scores are reported on the concatenated full-story clip for each run. This version of the report removes every derived overall or composite score and keeps only the original benchmark outputs on their native scales.
+This report evaluates full-story benchmark results for SceneWeaver runs. The comparison spans three control strategies, `simple`, `core`, and `agentic`, and two conditioning backbones, text-to-video (T2V) and image-to-video (I2V), on four short narrative tasks: Fox and Grapes, Lion and Mouse, Thirsty Crow, and Tortoise and Hare. All scores are reported on the concatenated full-story clip for each run. This version of the report removes every derived overall or composite score and keeps only the original benchmark outputs on their native scales.
 
-The report covers five experiment families: `simple_t2v`, `core_t2v`, `agentic_t2v`, `core_i2v`, and `agentic_i2v`. This gives 20 benchmarked runs in total. On March 29, 2026, the agentic benchmark families were rerun end-to-end through Slurm arrays `3501931` (agentic T2V) and `3501927` (agentic I2V), and the report below uses those fresh rerun outputs for every agentic story.
+The report covers five experiment families: Simple T2V, Core T2V, Agentic T2V, Core I2V, and Agentic I2V. This gives 20 benchmarked runs in total. The agentic benchmark families were rerun end-to-end, and the report below uses those refreshed outputs for every agentic story.
 
 ## Experimental Setup
 
-All runs use the same narrative workload: four Aesop-style stories, fixed to eight windows per story, with target resolution `640x384`, `64` frames per window, `20` denoising steps, and `8` fps. The target story duration is therefore `80` seconds, i.e. eight `10`-second windows. The generation launcher `batch_jobs/run_story_origin_pavan_all4_array.sbatch` defines these defaults, and the benchmark launcher evaluates the concatenated `*_full_story.mp4` in each run folder.
+All runs use the same narrative workload: four Aesop-style stories, fixed to eight windows per story, with target resolution `640x384`, `64` frames per window, `20` denoising steps, and `8` fps. The target story duration is therefore `80` seconds, i.e. eight `10`-second windows. The benchmark evaluates the concatenated full-story clip for each run.
 
-The benchmark input is always the full concatenated story clip, not the per-window clips. Each run directory contains the concatenated `*_full_story.mp4`, and both the prompt benchmark and the continuity benchmark read that same file. This ensures that Video-Bench and VBench score the same temporal artifact and that the paper tables reflect story-level, not window-level, behavior.
+The benchmark input is always the full concatenated story clip, not the per-window clips. Both the prompt benchmark and the continuity benchmark read that same story-level video. This ensures that Video-Bench and VBench score the same temporal artifact and that the paper tables reflect story-level, not window-level, behavior.
 
 | Family | Backbone | Pipeline | Memory / carryover | Refinement controller |
 | --- | --- | --- | --- | --- |
-| Simple T2V | Wan `2.2-T2V-A14B-Diffusers` | `scripts/run_story_pipeline.py` | no embedding memory, no last-frame memory, no reference conditioning | none |
-| Core T2V | Wan `2.2-T2V-A14B-Diffusers` | `scripts/run_story_pipeline.py` | DINOv2 memory, continuity adapter, last_frame_memory, continuity_candidates=2, continuity_regen_attempts=2 | none |
-| Agentic T2V | Wan `2.2-T2V-A14B-Diffusers` | `scripts/run_story_pipeline_with_agents.py` | DINOv2 embeddings, no reference conditioning | continuity + storybeats + physics agents, max_iterations=5, quality_threshold=0.76 |
-| Core I2V | Wan `2.2-I2V-A14B-Diffusers` | `scripts/run_story_pipeline.py` | DINOv2 memory, continuity adapter, starter image, reference_tail_frames=4, reference_strength=0.70 | none |
-| Agentic I2V | Wan `2.2-I2V-A14B-Diffusers` | `scripts/run_story_pipeline_with_agents.py` | starter image plus previous-window visual carryover with the same I2V reference settings | continuity + storybeats + physics agents, max_iterations=5, quality_threshold=0.76 |
+| Simple T2V | Wan `2.2-T2V-A14B-Diffusers` | standard story pipeline | no embedding memory, no last-frame memory, no reference conditioning | none |
+| Core T2V | Wan `2.2-T2V-A14B-Diffusers` | standard story pipeline | DINOv2 memory, continuity adapter, last_frame_memory, continuity_candidates=2, continuity_regen_attempts=2 | none |
+| Agentic T2V | Wan `2.2-T2V-A14B-Diffusers` | agent-guided story pipeline | DINOv2 embeddings, no reference conditioning | continuity + storybeats + physics agents, max_iterations=5, quality_threshold=0.76 |
+| Core I2V | Wan `2.2-I2V-A14B-Diffusers` | standard story pipeline | DINOv2 memory, continuity adapter, starter image, reference_tail_frames=4, reference_strength=0.70 | none |
+| Agentic I2V | Wan `2.2-I2V-A14B-Diffusers` | agent-guided story pipeline | starter image plus previous-window visual carryover with the same I2V reference settings | continuity + storybeats + physics agents, max_iterations=5, quality_threshold=0.76 |
 
 
-Generation used Wan `2.2` 14B backbones with a Qwen `2.5-3B-Instruct` director model for shot and beat planning. The simple and core T2V runs came from `outputs/story_runs_origin_pavan`, while the I2V runs came from `outputs/story_runs_origin_pavan_i2v_concat`. The agentic T2V rerun reused the existing concatenated T2V run directories and wrote fresh benchmark outputs to `benchmark_reports_fullstory_t2v_rerun_20260329`; the agentic I2V rerun wrote to `benchmark_reports_fullstory_i2v_rerun_20260329`.
+Generation used Wan `2.2` 14B backbones with a Qwen `2.5-3B-Instruct` director model for shot and beat planning. The simple and core T2V results and the I2V results were collected from their respective story-run outputs. The agentic T2V and I2V results use refreshed benchmark outputs from the rerun evaluations.
 
 ## Video-Bench Setup Details
 
-The prompt benchmark was executed through `scripts/10_eval_videobench_window_prompt.py` via `batch_jobs/run_vbench_origin_pavan_simple_fullstory_array.sh` and `run_vbench_combined.sh`. For the full-story setting, the wrapper builds a temporary one-clip Video-Bench dataset under `_videobench_input/`, symlinks the concatenated `*_full_story.mp4` as the single evaluation clip, and writes a story-level `prompt_file.json`. Prompt sourcing is set to `auto`, which first attempts to recover a story prompt from the run metadata and then falls back to the internal story library if required.
+The prompt benchmark was executed with the full-story prompt-evaluation pipeline. For the full-story setting, the wrapper builds a temporary one-clip Video-Bench dataset, links the concatenated full-story clip as the single evaluation video, and writes a story-level prompt specification. Prompt sourcing is set to `auto`, which first attempts to recover a story prompt from the run metadata and then falls back to the internal story library if required.
 
-The actual Video-Bench judge is served locally through `run_videobench_local_server.sh` using `Qwen2.5-VL-7B-Instruct` behind an OpenAI-compatible endpoint at `http://127.0.0.1:8000/v1`. The server configuration is stored in `configs/videobench_local_config.json`. Each full-story evaluation runs the five Video-Bench dimensions sequentially: `video-text consistency`, `action`, `scene`, `object_class`, and `color`. The wrapper preserves the original Video-Bench score JSON, per-dimension stdout logs, and a run-level `summary.json` for each story.
+The actual Video-Bench judge is served locally using `Qwen2.5-VL-7B-Instruct` behind an OpenAI-compatible endpoint. A fixed local server configuration was used for every run. Each full-story evaluation runs the five Video-Bench dimensions sequentially: `video-text consistency`, `action`, `scene`, `object_class`, and `color`. The wrapper preserves the original Video-Bench score outputs, per-dimension logs, and a run-level summary for each story.
 
-The March 29 agentic reruns therefore validate the prompt benchmark under the exact same local judge setup that is used in the rest of the paper. The March 29, 2026 full agentic reruns reproduced the same raw Video-Bench prompt scores as the previous corrected report, while the VBench continuity values changed only at floating-point scale in `motion_smoothness`.
+The agentic reruns therefore validate the prompt benchmark under the exact same local judge setup that is used in the rest of the paper. The full agentic reruns reproduced the same raw Video-Bench prompt scores as the previous corrected report, while the VBench continuity values changed only at floating-point scale in `motion_smoothness`.
 
 ## VBench Setup Details
 
-Continuity was evaluated through `scripts/09_eval_vbench_continuity.py` on the same concatenated MP4 that was passed to Video-Bench. The reported continuity metrics are `subject_consistency`, `background_consistency`, `motion_smoothness`, and `temporal_flickering`, all read directly from the VBench output JSON. No rescaling or cross-metric aggregation is applied in this paper report.
+Continuity was evaluated on the same concatenated story video that was passed to Video-Bench. The reported continuity metrics are `subject_consistency`, `background_consistency`, `motion_smoothness`, and `temporal_flickering`, all read directly from the VBench outputs. No rescaling or cross-metric aggregation is applied in this paper report.
 
 ## Metric Definitions and Original Scales
 
 | Metric | Benchmark | Native scale | How it is obtained in this report |
 | --- | --- | --- | --- |
-| `video-text consistency` | Video-Bench | `0-5` | Raw `average_scores` value from the Video-Bench score JSON. No normalization. |
+| `video-text consistency` | Video-Bench | `0-5` | Raw `average_scores` value from the Video-Bench output. No normalization. |
 | `action` | Video-Bench | `0-3` | Raw `average_scores` value from Video-Bench. No normalization. |
 | `scene` | Video-Bench | `0-3` | Raw `average_scores` value from Video-Bench. No normalization. |
 | `object_class` | Video-Bench | `0-3` | Raw `average_scores` value from Video-Bench. No normalization. |
 | `color` | Video-Bench | `0-3` | Raw `average_scores` value from Video-Bench. No normalization. |
-| `subject_consistency` | VBench | native VBench score, typically `0-1` | Directly read from VBench output JSON. |
-| `background_consistency` | VBench | native VBench score, typically `0-1` | Directly read from VBench output JSON. |
-| `motion_smoothness` | VBench | native VBench score, typically `0-1` | Directly read from VBench output JSON. |
-| `temporal_flickering` | VBench | native VBench score, typically `0-1` | Directly read from VBench output JSON. |
+| `subject_consistency` | VBench | native VBench score, typically `0-1` | Directly read from the VBench outputs. |
+| `background_consistency` | VBench | native VBench score, typically `0-1` | Directly read from the VBench outputs. |
+| `motion_smoothness` | VBench | native VBench score, typically `0-1` | Directly read from the VBench outputs. |
+| `temporal_flickering` | VBench | native VBench score, typically `0-1` | Directly read from the VBench outputs. |
 
 No overall score, prompt composite, or continuity composite is used below. Metrics are only compared within their own original scales. This means, for example, that `video-text consistency` should not be averaged together with `action`, because they come from different native ranges (`0-5` vs `0-3`).
 
@@ -186,7 +186,7 @@ The story-wise tables show why a single scalar can be misleading. On Fox and Gra
 | Agentic I2V | 234.39 | 35.15 | 1.07 |
 
 
-Measured generation wall times from the recorded Slurm arrays still show a large cost gap between the simple/core families and the agentic families. `Agentic T2V` and `Agentic I2V` remain the most expensive settings by a large margin. On the evaluation side, the March 29 reruns show that full-story Video-Bench prompt scoring is much slower and more variable than VBench continuity. The refreshed agentic prompt-evaluation means are now `44.76` minutes for `Agentic T2V` and `35.15` minutes for `Agentic I2V`, while continuity remains near one minute per story.
+Measured generation wall times still show a large cost gap between the simple/core families and the agentic families. `Agentic T2V` and `Agentic I2V` remain the most expensive settings by a large margin. On the evaluation side, the reruns show that full-story Video-Bench prompt scoring is much slower and more variable than VBench continuity. The refreshed agentic prompt-evaluation means are now `44.76` minutes for `Agentic T2V` and `35.15` minutes for `Agentic I2V`, while continuity remains near one minute per story.
 
 The rerun logs also show large story-to-story latency spread inside the same benchmark family. For `Agentic I2V`, Fox and Grapes completed prompt evaluation in about `8.31` minutes, while Lion and Mouse and Tortoise and Hare each required roughly `48-49` minutes. That spread is much larger than the change in raw scores, which indicates that the local judge path is the main source of evaluation-time variability rather than a change in the underlying generated video.
 
@@ -194,9 +194,9 @@ The internal optimization traces still show `quality_threshold=0.76`, `average_i
 
 ## Evaluation Stability and Reruns
 
-The earlier incomplete `agentic_i2v` Lion and Mouse benchmark was an evaluation-side issue, not a generation failure. That issue was first corrected with a targeted prompt rerun on March 28, 2026, and then superseded by the full March 29, 2026 agentic reruns (`3501931` and `3501927`). The full reruns completed successfully for all eight agentic story evaluations.
+The earlier incomplete Lion and Mouse benchmark in the agentic I2V setting was an evaluation-side issue, not a generation failure. That issue was first corrected with a targeted prompt rerun and then superseded by the full agentic reruns. The full reruns completed successfully for all eight agentic story evaluations.
 
-From the paper-writing perspective, the important result is that the full agentic reruns do not materially change the raw benchmark interpretation. The raw Video-Bench prompt scores are unchanged relative to the corrected archived agentic report, and the only continuity changes are tiny floating-point-level drifts in `motion_smoothness`. The rerun therefore strengthens confidence in the metric tables while also refreshing the evaluation-time measurements and summary paths.
+From the paper-writing perspective, the important result is that the full agentic reruns do not materially change the raw benchmark interpretation. The raw Video-Bench prompt scores are unchanged relative to the corrected archived agentic report, and the only continuity changes are tiny floating-point-level drifts in `motion_smoothness`. The rerun therefore strengthens confidence in the metric tables while also refreshing the evaluation-time measurements and summary outputs.
 
 ## Conclusion
 
@@ -204,4 +204,4 @@ Without introducing any composite score, the raw metrics still support three rob
 
 ## Paper-Ready Conclusion Excerpt
 
-Using only the original benchmark outputs and no derived overall score, the results show that `Core T2V` is the most stable family across the raw VBench continuity metrics while remaining competitive on the raw Video-Bench prompt dimensions. `Simple T2V` achieves the highest mean raw `video-text consistency`, while `Core T2V`, `Core I2V`, and `Agentic I2V` lead different subsets of the remaining prompt and continuity metrics. The full March 29, 2026 agentic reruns confirm the same raw score pattern as the corrected earlier report and therefore support metric-by-metric reporting rather than a merged scalar summary.
+Using only the original benchmark outputs and no derived overall score, the results show that `Core T2V` is the most stable family across the raw VBench continuity metrics while remaining competitive on the raw Video-Bench prompt dimensions. `Simple T2V` achieves the highest mean raw `video-text consistency`, while `Core T2V`, `Core I2V`, and `Agentic I2V` lead different subsets of the remaining prompt and continuity metrics. The full agentic reruns confirm the same raw score pattern as the corrected earlier report and therefore support metric-by-metric reporting rather than a merged scalar summary.
