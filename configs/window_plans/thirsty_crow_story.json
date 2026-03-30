@@ -1,0 +1,44 @@
+[
+  {
+    "beat": "In the same dry village courtyard at noon, a thirsty black crow flies in under a broad tree, searching for water, and notices a clay pot near the roots.",
+    "scene_id": "thirsty_crow_courtyard",
+    "environment_anchor": "same dry village courtyard at noon, dusty earth, broad tree, earthen clay pot, scattered pebbles, warm sunlight, still background",
+    "character_lock": "keep one single black crow consistent in size, feathers, beak, and bright eyes; keep the same clay pot, same tree, same dusty courtyard; no humans, no extra birds, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Still in the same courtyard, the crow lands on the rim of the clay pot, looks inside, and realizes the water level is too low to reach with its beak.",
+    "scene_id": "thirsty_crow_courtyard",
+    "environment_anchor": "same dry village courtyard at noon, dusty earth, broad tree, earthen clay pot, scattered pebbles, warm sunlight, still background",
+    "character_lock": "keep one single black crow consistent in size, feathers, beak, and bright eyes; keep the same clay pot, same tree, same dusty courtyard; show the water deep inside the pot and difficult to reach; no humans, no extra birds, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Without changing the setting, the crow looks down at the ground beside the pot, notices several small stones, and understands that the stones may help raise the water.",
+    "scene_id": "thirsty_crow_courtyard",
+    "environment_anchor": "same dry village courtyard at noon, dusty earth, broad tree, earthen clay pot, scattered pebbles, warm sunlight, still background",
+    "character_lock": "keep one single black crow consistent in size, feathers, beak, and bright eyes; keep the same clay pot, same tree, same dusty courtyard; keep the stones clearly visible near the pot; no humans, no extra birds, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "In the same background, the crow picks up small stones one by one and drops them into the clay pot, and the water starts rising a little.",
+    "scene_id": "thirsty_crow_courtyard",
+    "environment_anchor": "same dry village courtyard at noon, dusty earth, broad tree, earthen clay pot, scattered pebbles, warm sunlight, still background",
+    "character_lock": "keep one single black crow consistent in size, feathers, beak, and bright eyes; keep the same clay pot, same tree, same dusty courtyard; show a few stones already inside the pot and the water slightly higher than before; no humans, no extra birds, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Still in the same courtyard, the crow continues dropping more stones into the pot, and the water level rises clearly toward the rim.",
+    "scene_id": "thirsty_crow_courtyard",
+    "environment_anchor": "same dry village courtyard at noon, dusty earth, broad tree, earthen clay pot, scattered pebbles, warm sunlight, still background",
+    "character_lock": "keep one single black crow consistent in size, feathers, beak, and bright eyes; keep the same clay pot, same tree, same dusty courtyard; show more stones inside the pot and the water visibly near the top; no humans, no extra birds, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "In the same final setting, the crow bends to the rim and drinks the raised water successfully from the clay pot, looking relieved and satisfied.",
+    "scene_id": "thirsty_crow_courtyard",
+    "environment_anchor": "same dry village courtyard at noon, dusty earth, broad tree, earthen clay pot, scattered pebbles, warm sunlight, still background",
+    "character_lock": "keep one single black crow consistent in size, feathers, beak, and bright eyes; keep the same clay pot, same tree, same dusty courtyard; show the water high enough to drink and no extra birds or background change",
+    "scene_change": false
+  }
+]

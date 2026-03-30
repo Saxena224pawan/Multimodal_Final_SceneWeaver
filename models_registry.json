@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "key": "qwen2_5_0_5b_instruct",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "repo_type": "model",
+      "module": "llm_model",
+      "role": "primary",
+      "purpose": "Lightweight scene director LLM for storyline-to-scene planning.",
+      "source": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct",
+      "local_subdir": "LLM_MODEL/Qwen2.5-0.5B-Instruct",
+      "license": "apache-2.0",
+      "requires_auth": false
+    },
+    {
+      "key": "qwen2_5_3b_instruct",
+      "repo_id": "Qwen/Qwen2.5-3B-Instruct",
+      "repo_type": "model",
+      "module": "llm_model",
+      "role": "fallback",
+      "purpose": "Higher-quality scene director fallback.",
+      "source": "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct",
+      "local_subdir": "LLM_MODEL/Qwen2.5-3B-Instruct",
+      "license": "apache-2.0",
+      "requires_auth": false
+    },
+    {
+      "key": "qwen2_5_1_5b_instruct",
+      "repo_id": "Qwen/Qwen2.5-1.5B-Instruct",
+      "repo_type": "model",
+      "module": "window_gen",
+      "role": "primary",
+      "purpose": "Fast window/shot planner and prompt refiner.",
+      "source": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct",
+      "local_subdir": "Window_Gen/Qwen2.5-1.5B-Instruct",
+      "license": "apache-2.0",
+      "requires_auth": false
+    },
+    {
+      "key": "zeroscope_v2_576w",
+      "repo_id": "cerspense/zeroscope_v2_576w",
+      "repo_type": "model",
+      "module": "video_backbone",
+      "role": "fallback",
+      "purpose": "Lightweight text-to-video baseline focused on fast iteration.",
+      "source": "https://huggingface.co/cerspense/zeroscope_v2_576w",
+      "local_subdir": "VIDEO_GENERATIVE_BACKBONE/zeroscope_v2_576w",
+      "license": "cc-by-nc-4.0",
+      "requires_auth": false
+    },
+    {
+      "key": "wan2_1_t2v_1_3b_diffusers",
+      "repo_id": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+      "repo_type": "model",
+      "module": "video_backbone",
+      "role": "primary",
+      "purpose": "Small stable fallback video generator.",
+      "source": "https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+      "local_subdir": "VIDEO_GENERATIVE_BACKBONE/Wan2.1-T2V-1.3B-Diffusers",
+      "license": "apache-2.0",
+      "requires_auth": false
+    },
+    {
+      "key": "ltx_video_2b_distilled",
+      "repo_id": "Lightricks/LTX-Video-2B-0.9.6-Distilled-04-25",
+      "repo_type": "model",
+      "module": "video_backbone",
+      "role": "fallback",
+      "purpose": "High-quality distilled fallback when license access is available.",
+      "source": "https://huggingface.co/Lightricks/LTX-Video-2B-0.9.6-Distilled-04-25",
+      "local_subdir": "VIDEO_GENERATIVE_BACKBONE/LTX-Video-2B-0.9.6-Distilled-04-25",
+      "license": "other",
+      "requires_auth": true
+    },
+    {
+      "key": "smolvlm2_500m_video_instruct",
+      "repo_id": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+      "repo_type": "model",
+      "module": "caption_gen",
+      "role": "primary",
+      "purpose": "Lightweight video caption model for expected caption generation.",
+      "source": "https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+      "local_subdir": "Caption_Gen/SmolVLM2-500M-Video-Instruct",
+      "license": "apache-2.0",
+      "requires_auth": false
+    },
+    {
+      "key": "qwen2_5_vl_3b_instruct",
+      "repo_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+      "repo_type": "model",
+      "module": "caption_gen",
+      "role": "fallback",
+      "purpose": "Higher-quality caption fallback model.",
+      "source": "https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct",
+      "local_subdir": "Caption_Gen/Qwen2.5-VL-3B-Instruct",
+      "license": "apache-2.0",
+      "requires_auth": false
+    },
+    {
+      "key": "smolvlm2_500m_video_feedback",
+      "repo_id": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+      "repo_type": "model",
+      "module": "feedback_caption",
+      "role": "primary",
+      "purpose": "Lightweight caption feedback scoring and critique generation.",
+      "source": "https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+      "local_subdir": "Feedback_Caption/SmolVLM2-500M-Video-Instruct",
+      "license": "apache-2.0",
+      "requires_auth": false
+    },
+    {
+      "key": "qwen2_5_vl_3b_feedback",
+      "repo_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+      "repo_type": "model",
+      "module": "feedback_caption",
+      "role": "fallback",
+      "purpose": "Higher-quality feedback caption fallback model.",
+      "source": "https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct",
+      "local_subdir": "Feedback_Caption/Qwen2.5-VL-3B-Instruct",
+      "license": "apache-2.0",
+      "requires_auth": false
+    },
+    {
+      "key": "dinov2_small",
+      "repo_id": "facebook/dinov2-small",
+      "repo_type": "model",
+      "module": "global_local_emb_feedback",
+      "role": "primary",
+      "purpose": "Lightweight DINOv2 embeddings for global-local drift checks across windows.",
+      "source": "https://huggingface.co/facebook/dinov2-small",
+      "local_subdir": "Globa_Local_Emb_Feedback/dinov2-small",
+      "license": "apache-2.0",
+      "requires_auth": false
+    },
+    {
+      "key": "dinov2_base",
+      "repo_id": "facebook/dinov2-base",
+      "repo_type": "model",
+      "module": "global_local_emb_feedback",
+      "role": "fallback",
+      "purpose": "Higher-capacity DINOv2 fallback for continuity checks.",
+      "source": "https://huggingface.co/facebook/dinov2-base",
+      "local_subdir": "Globa_Local_Emb_Feedback/dinov2-base",
+      "license": "unknown",
+      "requires_auth": false
+    },
+    {
+      "key": "bge_m3",
+      "repo_id": "BAAI/bge-m3",
+      "repo_type": "model",
+      "module": "global_local_emb_feedback",
+      "role": "aux",
+      "purpose": "Text embedding support for semantic continuity checks.",
+      "source": "https://huggingface.co/BAAI/bge-m3",
+      "local_subdir": "Globa_Local_Emb_Feedback/bge-m3",
+      "license": "mit",
+      "requires_auth": false
+    }
+  ]
+}

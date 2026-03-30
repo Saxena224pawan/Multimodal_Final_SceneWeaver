@@ -1,0 +1,44 @@
+[
+  {
+    "beat": "Inside the same sandstone temple courtyard at dusk, Anaya asks Ravi why lamps are lit during Diwali and what the light symbolizes.",
+    "scene_id": "temple_courtyard_dialogue",
+    "environment_anchor": "same sandstone temple courtyard at dusk, carved pillars, marigold garlands, oil lamps, warm amber light, still background",
+    "character_lock": "keep Anaya and Ravi consistent in clothing, age, hairstyle, and position; both remain in the same courtyard background; no extra people entering the frame",
+    "scene_change": false
+  },
+  {
+    "beat": "Still seated in the same courtyard, Ravi explains that the lamps symbolize knowledge, hope, and the victory of dharma over darkness while Anaya listens closely.",
+    "scene_id": "temple_courtyard_dialogue",
+    "environment_anchor": "same sandstone temple courtyard at dusk, carved pillars, marigold garlands, oil lamps, warm amber light, still background",
+    "character_lock": "keep Anaya and Ravi consistent in clothing, age, hairstyle, and position; both remain in the same courtyard background; no extra people entering the frame",
+    "scene_change": false
+  },
+  {
+    "beat": "Without changing location, Anaya asks how daily puja connects family, gratitude, and discipline in Hindu homes.",
+    "scene_id": "temple_courtyard_dialogue",
+    "environment_anchor": "same sandstone temple courtyard at dusk, carved pillars, marigold garlands, oil lamps, warm amber light, still background",
+    "character_lock": "keep Anaya and Ravi consistent in clothing, age, hairstyle, and position; both remain in the same courtyard background; no extra people entering the frame",
+    "scene_change": false
+  },
+  {
+    "beat": "In the same background, Ravi explains how puja, incense, flowers, and prayer create a feeling of devotion, routine, and remembrance while Anaya responds thoughtfully.",
+    "scene_id": "temple_courtyard_dialogue",
+    "environment_anchor": "same sandstone temple courtyard at dusk, carved pillars, marigold garlands, oil lamps, warm amber light, still background",
+    "character_lock": "keep Anaya and Ravi consistent in clothing, age, hairstyle, and position; both remain in the same courtyard background; no extra people entering the frame",
+    "scene_change": false
+  },
+  {
+    "beat": "Still in the same courtyard, Anaya asks how stories of Krishna, Rama, and the Bhagavad Gita shape values, duty, and community life.",
+    "scene_id": "temple_courtyard_dialogue",
+    "environment_anchor": "same sandstone temple courtyard at dusk, carved pillars, marigold garlands, oil lamps, warm amber light, still background",
+    "character_lock": "keep Anaya and Ravi consistent in clothing, age, hairstyle, and position; both remain in the same courtyard background; no extra people entering the frame",
+    "scene_change": false
+  },
+  {
+    "beat": "In the same setting, Ravi answers warmly while both reflect on compassion, duty, respect for elders, and living traditions in Hindu culture.",
+    "scene_id": "temple_courtyard_dialogue",
+    "environment_anchor": "same sandstone temple courtyard at dusk, carved pillars, marigold garlands, oil lamps, warm amber light, still background",
+    "character_lock": "keep Anaya and Ravi consistent in clothing, age, hairstyle, and position; both remain in the same courtyard background; no extra people entering the frame",
+    "scene_change": false
+  }
+]

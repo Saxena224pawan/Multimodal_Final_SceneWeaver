@@ -1,54 +1,140 @@
-# SceneWeaver (WIP)
+# SceneWeaver Story Pipeline
 
-## Wan 2.0 Video Backbone
+Active and supported runtime is the story pipeline script stack:
+- `run_story_pipeline.sh`
+- `scripts/run_story_pipeline.py`
+- `director_llm/scene_director.py`
+- `video_backbone/wan_backbone.py`
+- `memory_module/embedding_memory.py`
 
-Current status: a first `video_backbone` implementation is available with a CLI generator.
-
-### Files
-- `video_backbone/wan_backbone.py`: Wan wrapper (`load`, `generate_clip`, `save_video`)
-- `scripts/generate_wan_clip.py`: one-shot prompt-to-video test script
-
-### Install
+## Install
 ```bash
-pip install torch diffusers transformers accelerate imageio
+pip install -r requirements.txt
 ```
 
-### Run
+## Quick Start (Cluster)
 ```bash
-python scripts/generate_wan_clip.py \
-  --prompt "A cinematic drone shot over snowy mountains at sunrise" \
-  --model_id "Wan-AI/Wan2.0-T2V-14B" \
-  --output outputs/wan_clip.mp4
+sbatch --partition=a40 --gres=gpu:a40:1 \
+  --export=ALL,ENV_PATH=sceneweaver311,HF_HOME=$PWD/.hf,DRY_RUN=0,AUTO_FALLBACK_DRY_RUN=0 \
+  run_story_pipeline.sh
 ```
 
-### Apple Silicon note
-- `Wan-AI/Wan2.0-T2V-14B` is generally too heavy for local MPS runs and may crash.
-- For Mac local testing, use a smaller Wan checkpoint; keep 14B for CUDA GPU machines.
+## Representative Full-Story Demos
+The gallery below uses one representative `Fox and Grapes` full-story video for each active variant. Each preview loops like a GIF on GitHub and links to the corresponding MP4.
+For actual embedded autoplaying MP4 playback, use the separate GitHub Pages gallery served from `docs/index.html`.
 
-## Scene Director + Memory Loop
+### `simple_t2v`
+![simple_t2v full story demo](assets/github_demos/simple_t2v_fox_and_grapes_preview.gif)
 
-The architecture now includes:
-- `director_llm/scene_director.py`: storyline -> scene windows -> prompt refinement
-- `memory_module/embedding_memory.py`: CLIP/DINOv2 visual embeddings + local/global drift feedback
-- `scripts/run_story_pipeline.py`: end-to-end orchestration per 10s window
+[Open full MP4](assets/github_demos/simple_t2v_fox_and_grapes.mp4)
 
-### Dry run (prompt planning/refinement only)
+### `core_t2v`
+![core_t2v full story demo](assets/github_demos/core_t2v_fox_and_grapes_preview.gif)
+
+[Open full MP4](assets/github_demos/core_t2v_fox_and_grapes.mp4)
+
+### `agentic_t2v`
+![agentic_t2v full story demo](assets/github_demos/agentic_t2v_fox_and_grapes_preview.gif)
+
+[Open full MP4](assets/github_demos/agentic_t2v_fox_and_grapes.mp4)
+
+### `core_i2v`
+![core_i2v full story demo](assets/github_demos/core_i2v_fox_and_grapes_preview.gif)
+
+[Open full MP4](assets/github_demos/core_i2v_fox_and_grapes.mp4)
+
+### `agentic_i2v`
+![agentic_i2v full story demo](assets/github_demos/agentic_i2v_fox_and_grapes_preview.gif)
+
+[Open full MP4](assets/github_demos/agentic_i2v_fox_and_grapes.mp4)
+
+## Architecture (Active Path)
+1. Storyline is split into time windows by `SceneDirector`.
+2. Each window prompt is refined with continuity context.
+3. `WanBackbone` (or another diffusers T2V model id) generates frames.
+4. Frames are encoded to per-window MP4 clips.
+5. Optional memory embeddings (`clip` or `dinov2`) provide continuity feedback.
+6. Optional captioner hook (BLIP-2/LLaVA) captions each generated clip to tighten environment anchors and detect duplicate subjects.
+
+## StorySpec Authoring (Characters + Objects + Beats)
+Use this path when you want story-specific entities and tighter prompt control:
+
+1) Build StorySpec from a raw storyline (LLM-assisted, heuristic fallback):
 ```bash
-python scripts/run_story_pipeline.py \
-  --storyline "A race starts between a rabbit and a tortoise, rabbit sprints early, then slows, tortoise steadily advances and wins." \
-  --total_minutes 0.5 \
-  --window_seconds 10 \
-  --embedding_backend none \
-  --dry_run
+python scripts/02_story/01_storyline_to_story_spec.py \
+  --storyline "A courier races across a flooded station to deliver a final letter before the last train departs." \
+  --runtime-seconds 48 \
+  --output outputs/story/story_spec.generated.json
 ```
 
-### Full loop (cluster / CUDA)
+2) Convert StorySpec into window-level prompts:
 ```bash
-python scripts/run_story_pipeline.py \
-  --storyline "A race starts between a rabbit and a tortoise, rabbit sprints early, then slows, tortoise steadily advances and wins." \
-  --total_minutes 5 \
-  --window_seconds 10 \
-  --video_model_id "Wan-AI/Wan2.0-T2V-14B" \
-  --embedding_backend clip \
-  --device cuda
+python scripts/02_story/00_story_to_scene_plan.py \
+  --story-spec outputs/story/story_spec.generated.json \
+  --output outputs/story/scene_plan.json \
+  --window-seconds 4
 ```
+
+Or run both steps in one command:
+```bash
+python scripts/02_story/02_storyline_to_scene_plan.py \
+  --storyline "A courier races across a flooded station to deliver a final letter before the last train departs." \
+  --runtime-seconds 48 \
+  --scene-plan-output outputs/story/scene_plan.generated.json
+```
+
+`StorySpec` now supports:
+- root `objects`: per-story prop/set definitions with stable IDs
+- beat `must_include_objects`: explicit object continuity per beat
+
+## Captioner Hook (optional)
+- Download a captioner checkpoint (example already supported):  
+  `huggingface-cli download Salesforce/blip2-flan-t5-xl --local-dir models/blip2-flan-t5-xl --local-dir-use-symlinks False`
+- Enable in the pipeline: add `--captioner_model_id models/blip2-flan-t5-xl --captioner_device cpu` to `scripts/run_story_pipeline.py` arguments (or set `CAPTIONER_MODEL_ID` in the bash launcher).
+- Captions are logged per window (`captions`, `caption_summary`, `caption_duplicates`) and feed the next window’s environment anchor and duplicate-aware negative prompt.
+
+## Continuity Adapter Fine-Tuning
+The project includes supervised continuity-adapter training for DINOv2 embeddings:
+- `scripts/finetune_pororo_continuity.py`
+- `scripts/finetune_flintstones_continuity.py`
+
+Training objective and model:
+- Uses bidirectional InfoNCE between anchor/positive transition frames.
+- Backbone: DINOv2 (`AutoModel` + `AutoImageProcessor`).
+- Head: MLP projector (`feature_dim -> hidden_dim -> proj_dim`), L2-normalized output embeddings.
+- Optimizer: AdamW with separate LR for projector and (optional) backbone.
+
+Dataset pairing:
+- PororoSV: transition pair from each cached window (`frames[-2]` -> `frames[-1]`), with `seen`/`unseen` validation split control.
+- FlintstonesSV: consecutive shot pairs per episode (`last frame of previous shot` -> `first frame of next shot`).
+
+Run Pororo fine-tuning (cluster wrapper):
+```bash
+sbatch finetune_continuity.sh
+```
+
+Important wrapper defaults in `finetune_continuity.sh`:
+- `EPOCHS=1000`, `BATCH_SIZE=64`, `TEMPERATURE=0.07`
+- `LR_PROJECTOR=5e-5`, `LR_BACKBONE=1e-6`, `WEIGHT_DECAY=5e-2`
+- `UNFREEZE_BACKBONE=0` (projector-only by default; set `1` to full finetuning)
+- `VAL_SPLIT=unseen`
+
+Run Flintstones fine-tuning (direct):
+```bash
+python scripts/finetune_flintstones_continuity.py \
+  --dataset_root /home/vault/v123be/v123be36/FlintstonesSV \
+  --dino_model_id /home/vault/v123be/v123be36/facebook/dinov2-base \
+  --save_path outputs/flintstones_continuity_adapter.pt
+```
+
+Outputs:
+- Best checkpoint (`*.pt`) is saved by lowest validation loss.
+- Per-epoch metrics are written to `*.history.json`.
+- Checkpoint contains: `projector_state_dict`, `args`, `dino_model_id`, `feature_dim`, and in-run metric history.
+
+Use a trained adapter in the story pipeline:
+- Set `EMBEDDING_ADAPTER_CKPT=/path/to/adapter.pt` in `run_story_pipeline.sh`, or pass `--embedding_adapter_ckpt` to `scripts/run_story_pipeline.py`.
+- The launcher fails fast if the adapter checkpoint path is set but missing.
+
+## Note on `src/driftguard`
+`src/driftguard` is retained only as archived experimental code and is not a supported runtime path for current jobs.

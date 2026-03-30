@@ -1,0 +1,44 @@
+[
+  {
+    "beat": "In the same open meadow race path under bright daylight, a confident hare boasts beside a steady tortoise before the race begins.",
+    "scene_id": "tortoise_hare_meadow",
+    "environment_anchor": "same open meadow race path, grassy field, wildflowers, distant trees, bright daylight, still background",
+    "character_lock": "keep one gray hare and one green-brown tortoise consistent across all windows; keep the same meadow path, same distant trees, same daylight; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Still on the same meadow path, the race starts and the hare dashes far ahead while the tortoise continues slowly and calmly behind.",
+    "scene_id": "tortoise_hare_meadow",
+    "environment_anchor": "same open meadow race path, grassy field, wildflowers, distant trees, bright daylight, still background",
+    "character_lock": "keep one gray hare and one green-brown tortoise consistent across all windows; keep the same meadow path and background; show clear speed contrast; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Without changing the setting, the hare looks back, sees the tortoise still far behind, and becomes overly relaxed and smug.",
+    "scene_id": "tortoise_hare_meadow",
+    "environment_anchor": "same open meadow race path, grassy field, wildflowers, distant trees, bright daylight, still background",
+    "character_lock": "keep one gray hare and one green-brown tortoise consistent across all windows; keep the same meadow path and background; show the tortoise farther back and the hare overconfident; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "In the same meadow, the hare lies down under a shady spot near the path and falls asleep while the tortoise keeps moving steadily forward.",
+    "scene_id": "tortoise_hare_meadow",
+    "environment_anchor": "same open meadow race path, grassy field, wildflowers, distant trees, bright daylight, still background",
+    "character_lock": "keep one gray hare and one green-brown tortoise consistent across all windows; keep the same meadow path and background; show the hare sleeping and the tortoise continuing; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Still in the same background, the tortoise quietly passes the sleeping hare and moves closer to the finish area on the meadow path.",
+    "scene_id": "tortoise_hare_meadow",
+    "environment_anchor": "same open meadow race path, grassy field, wildflowers, distant trees, bright daylight, still background",
+    "character_lock": "keep one gray hare and one green-brown tortoise consistent across all windows; keep the same meadow path and background; show the tortoise ahead of the sleeping hare now; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "In the same final meadow setting, the tortoise reaches the finish first as the hare wakes too late and rushes forward in surprise.",
+    "scene_id": "tortoise_hare_meadow",
+    "environment_anchor": "same open meadow race path, grassy field, wildflowers, distant trees, bright daylight, still background",
+    "character_lock": "keep one gray hare and one green-brown tortoise consistent across all windows; keep the same meadow path and background; show the tortoise winning calmly and the hare reacting with surprise; no humans, no extra animals, no background change",
+    "scene_change": false
+  }
+]

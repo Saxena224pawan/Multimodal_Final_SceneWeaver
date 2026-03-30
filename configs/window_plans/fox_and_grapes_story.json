@@ -1,0 +1,44 @@
+[
+  {
+    "beat": "In the same vineyard at golden afternoon, a red fox enters between vine rows and notices a heavy bunch of ripe purple grapes hanging above.",
+    "scene_id": "fox_grapes_vineyard",
+    "environment_anchor": "same vineyard in warm afternoon light, grape vines, wooden posts, dusty ground, ripe purple grapes, still background",
+    "character_lock": "keep one single red fox consistent across all windows; keep the same vineyard rows, same grape cluster, same wooden posts, same warm afternoon light; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Still in the same vineyard, the fox stands beneath the grapes, stretches upward, and judges how high the fruit hangs above its reach.",
+    "scene_id": "fox_grapes_vineyard",
+    "environment_anchor": "same vineyard in warm afternoon light, grape vines, wooden posts, dusty ground, ripe purple grapes, still background",
+    "character_lock": "keep one single red fox consistent across all windows; keep the same vineyard rows and same grape cluster; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Without changing the setting, the fox leaps up toward the grapes for the first time but falls short and lands back on the dusty ground.",
+    "scene_id": "fox_grapes_vineyard",
+    "environment_anchor": "same vineyard in warm afternoon light, grape vines, wooden posts, dusty ground, ripe purple grapes, still background",
+    "character_lock": "keep one single red fox consistent across all windows; keep the same vineyard rows and same grape cluster; show a clear jumping attempt and failed reach; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "In the same vineyard background, the fox tries again with a higher jump toward the grapes but still cannot catch them.",
+    "scene_id": "fox_grapes_vineyard",
+    "environment_anchor": "same vineyard in warm afternoon light, grape vines, wooden posts, dusty ground, ripe purple grapes, still background",
+    "character_lock": "keep one single red fox consistent across all windows; keep the same vineyard rows and same grape cluster; show a second stronger jump that still fails; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "Still in the same place, the fox stops jumping, looks annoyed and tired, and stares at the grapes from below.",
+    "scene_id": "fox_grapes_vineyard",
+    "environment_anchor": "same vineyard in warm afternoon light, grape vines, wooden posts, dusty ground, ripe purple grapes, still background",
+    "character_lock": "keep one single red fox consistent across all windows; keep the same vineyard rows and same grape cluster; show frustration clearly; no humans, no extra animals, no background change",
+    "scene_change": false
+  },
+  {
+    "beat": "In the same final vineyard setting, the fox turns away dismissively as if deciding the grapes are probably sour and not worth the effort.",
+    "scene_id": "fox_grapes_vineyard",
+    "environment_anchor": "same vineyard in warm afternoon light, grape vines, wooden posts, dusty ground, ripe purple grapes, still background",
+    "character_lock": "keep one single red fox consistent across all windows; keep the same vineyard rows and same grape cluster; show the fox walking away with dismissive body language; no humans, no extra animals, no background change",
+    "scene_change": false
+  }
+]

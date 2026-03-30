@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SceneWeaver Full-Story Demos</title>
+    <style>
+      :root {
+        --bg: #f5f1e8;
+        --panel: #fffaf2;
+        --ink: #1f1b16;
+        --muted: #6b6258;
+        --line: #d8cfc1;
+        --accent: #9d4edd;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(157, 78, 221, 0.12), transparent 28%),
+          radial-gradient(circle at bottom right, rgba(230, 151, 78, 0.12), transparent 24%),
+          var(--bg);
+      }
+
+      .wrap {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 40px 0 56px;
+      }
+
+      .hero {
+        margin-bottom: 28px;
+        padding: 28px;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: rgba(255, 250, 242, 0.86);
+        backdrop-filter: blur(8px);
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(34px, 5vw, 60px);
+        line-height: 0.95;
+      }
+
+      .hero p {
+        margin: 16px 0 0;
+        max-width: 760px;
+        font-size: 18px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+      }
+
+      .card {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--panel);
+        box-shadow: 0 20px 50px rgba(34, 26, 18, 0.08);
+      }
+
+      .card h2 {
+        margin: 0 0 6px;
+        font-size: 20px;
+      }
+
+      .meta {
+        margin: 0 0 14px;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      video {
+        display: block;
+        width: 100%;
+        border-radius: 16px;
+        background: #000;
+      }
+
+      .actions {
+        margin-top: 12px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .actions a {
+        color: var(--ink);
+        text-decoration: none;
+        font-size: 14px;
+        border-bottom: 1px solid var(--ink);
+      }
+
+      .foot {
+        margin-top: 28px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <p class="eyebrow">SceneWeaver Demo Gallery</p>
+        <h1>Full-Story Variant Comparison</h1>
+        <p>
+          One representative <strong>Fox and Grapes</strong> full-story output is shown for each active variant.
+          These clips autoplay in-place on the GitHub Pages site so the qualitative differences between
+          <code>simple_t2v</code>, <code>core_t2v</code>, <code>agentic_t2v</code>, <code>core_i2v</code>, and
+          <code>agentic_i2v</code> can be compared directly.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2><code>simple_t2v</code></h2>
+          <p class="meta">Text-to-Video Baseline</p>
+          <video autoplay muted loop playsinline controls preload="metadata" poster="./assets/github_demos/simple_t2v_fox_and_grapes.jpg">
+            <source src="./assets/github_demos/simple_t2v_fox_and_grapes.mp4" type="video/mp4">
+          </video>
+          <div class="actions">
+            <a href="./assets/github_demos/simple_t2v_fox_and_grapes.mp4">Open MP4</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2><code>core_t2v</code></h2>
+          <p class="meta">Text-to-Video With Memory</p>
+          <video autoplay muted loop playsinline controls preload="metadata" poster="./assets/github_demos/core_t2v_fox_and_grapes.jpg">
+            <source src="./assets/github_demos/core_t2v_fox_and_grapes.mp4" type="video/mp4">
+          </video>
+          <div class="actions">
+            <a href="./assets/github_demos/core_t2v_fox_and_grapes.mp4">Open MP4</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2><code>agentic_t2v</code></h2>
+          <p class="meta">Text-to-Video With Multi-Agent Refinement</p>
+          <video autoplay muted loop playsinline controls preload="metadata" poster="./assets/github_demos/agentic_t2v_fox_and_grapes.jpg">
+            <source src="./assets/github_demos/agentic_t2v_fox_and_grapes.mp4" type="video/mp4">
+          </video>
+          <div class="actions">
+            <a href="./assets/github_demos/agentic_t2v_fox_and_grapes.mp4">Open MP4</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2><code>core_i2v</code></h2>
+          <p class="meta">Image-to-Video With Carryover</p>
+          <video autoplay muted loop playsinline controls preload="metadata" poster="./assets/github_demos/core_i2v_fox_and_grapes.jpg">
+            <source src="./assets/github_demos/core_i2v_fox_and_grapes.mp4" type="video/mp4">
+          </video>
+          <div class="actions">
+            <a href="./assets/github_demos/core_i2v_fox_and_grapes.mp4">Open MP4</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2><code>agentic_i2v</code></h2>
+          <p class="meta">Image-to-Video With Carryover And Agents</p>
+          <video autoplay muted loop playsinline controls preload="metadata" poster="./assets/github_demos/agentic_i2v_fox_and_grapes.jpg">
+            <source src="./assets/github_demos/agentic_i2v_fox_and_grapes.mp4" type="video/mp4">
+          </video>
+          <div class="actions">
+            <a href="./assets/github_demos/agentic_i2v_fox_and_grapes.mp4">Open MP4</a>
+          </div>
+        </article>
+      </section>
+
+      <p class="foot">
+        If autoplay is blocked by the browser, press play on any card. The repository README keeps lightweight GIF previews,
+        while this page is intended for actual embedded video playback.
+      </p>
+    </main>
+  </body>
+</html>
