@@ -23,43 +23,30 @@ sbatch --partition=a40 --gres=gpu:a40:1 \
 The gallery below uses one representative `Fox and Grapes` full-story video for each active variant. Each preview loops like a GIF on GitHub and links to the corresponding MP4.
 For actual embedded autoplaying MP4 playback, use the separate GitHub Pages gallery served from `docs/index.html`.
 
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/simple_t2v_fox_and_grapes.mp4">
-        <img src="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/simple_t2v_fox_and_grapes_preview.gif" alt="simple_t2v full story demo" width="220"><br>
-        <code>simple_t2v</code>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/core_t2v_fox_and_grapes.mp4">
-        <img src="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/core_t2v_fox_and_grapes_preview.gif" alt="core_t2v full story demo" width="220"><br>
-        <code>core_t2v</code>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/agentic_t2v_fox_and_grapes.mp4">
-        <img src="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/agentic_t2v_fox_and_grapes_preview.gif" alt="agentic_t2v full story demo" width="220"><br>
-        <code>agentic_t2v</code>
-      </a>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <a href="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/core_i2v_fox_and_grapes.mp4">
-        <img src="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/core_i2v_fox_and_grapes_preview.gif" alt="core_i2v full story demo" width="220"><br>
-        <code>core_i2v</code>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/agentic_i2v_fox_and_grapes.mp4">
-        <img src="https://raw.githubusercontent.com/Vinay-Orsu/Multimodal_Final_SceneWeaver/trail/assets/github_demos/agentic_i2v_fox_and_grapes_preview.gif" alt="agentic_i2v full story demo" width="220"><br>
-        <code>agentic_i2v</code>
-      </a>
-    </td>
-    <td></td>
-  </tr>
-</table>
+### `simple_t2v`
+![simple_t2v full story demo](assets/github_demos/simple_t2v_fox_and_grapes_preview.gif)
+
+[Open full MP4](assets/github_demos/simple_t2v_fox_and_grapes.mp4)
+
+### `core_t2v`
+![core_t2v full story demo](assets/github_demos/core_t2v_fox_and_grapes_preview.gif)
+
+[Open full MP4](assets/github_demos/core_t2v_fox_and_grapes.mp4)
+
+### `agentic_t2v`
+![agentic_t2v full story demo](assets/github_demos/agentic_t2v_fox_and_grapes_preview.gif)
+
+[Open full MP4](assets/github_demos/agentic_t2v_fox_and_grapes.mp4)
+
+### `core_i2v`
+![core_i2v full story demo](assets/github_demos/core_i2v_fox_and_grapes_preview.gif)
+
+[Open full MP4](assets/github_demos/core_i2v_fox_and_grapes.mp4)
+
+### `agentic_i2v`
+![agentic_i2v full story demo](assets/github_demos/agentic_i2v_fox_and_grapes_preview.gif)
+
+[Open full MP4](assets/github_demos/agentic_i2v_fox_and_grapes.mp4)
 
 ## Architecture (Active Path)
 1. Storyline is split into time windows by `SceneDirector`.

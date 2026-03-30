@@ -1,0 +1,13 @@
+{
+  "GPT4o_API_KEY": "local-videobench",
+  "GPT4o_BASE_URL": "http://127.0.0.1:8000/v1",
+  "GPT4o_MODEL": "llava-1.5-7b-hf",
+  "GPT4o_mini_API_KEY": "local-videobench",
+  "GPT4o_mini_BASE_URL": "http://127.0.0.1:8000/v1",
+  "GPT4o_mini_MODEL": "llava-1.5-7b-hf",
+  "LOCAL_SERVER_MODEL_ID": "llava-hf/llava-1.5-7b-hf",
+  "LOCAL_SERVER_MODEL_DIR": "/home/vault/v123be/v123be36/sceneweaver_models/llava-1.5-7b-hf",
+  "LOCAL_SERVER_SERVED_MODEL_NAME": "llava-1.5-7b-hf",
+  "LOCAL_SERVER_HF_CACHE_SNAPSHOT_ROOT": "/home/hpc/v123be/v123be36/.cache/huggingface/hub/models--llava-hf--llava-1.5-7b-hf/snapshots",
+  "LOCAL_SERVER_DOWNLOAD_MODEL": "1"
+}

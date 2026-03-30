@@ -62,6 +62,11 @@ PROMPT_SOURCE_ORDER = (
 )
 SHORT_STORY_LIBRARY_PATH = ROOT / "configs" / "stories" / "short_stories.sh"
 SHORT_STORY_ENTRY_RE = re.compile(r'^\[(?P<key>[^\]]+)\]="(?P<text>.*)"$')
+VIDEO_FILE_SUFFIXES = {".mp4", ".mov", ".mkv", ".avi"}
+SMALL_LOCAL_VLM_FRAME_CAPS = {
+    "llava": 3,
+    "smolvlm": 5,
+}
 
 
 def parse_dimensions(raw: str) -> List[str]:
@@ -363,6 +368,110 @@ def collect_story_record(
     return [record], meta
 
 
+def load_optional_json(path: Optional[Path]) -> dict:
+    if path is None or not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def infer_full_story_frame_cap(config_path: Optional[Path], explicit_cap: int) -> int:
+    if explicit_cap > 0:
+        return explicit_cap
+    config = load_optional_json(config_path)
+    joined = " ".join(
+        str(config.get(key, ""))
+        for key in (
+            "LOCAL_SERVER_SERVED_MODEL_NAME",
+            "LOCAL_SERVER_MODEL_ID",
+            "GPT4o_MODEL",
+            "GPT4o_mini_MODEL",
+        )
+    ).lower()
+    for keyword, frame_cap in SMALL_LOCAL_VLM_FRAME_CAPS.items():
+        if keyword in joined:
+            return frame_cap
+    return 0
+
+
+def build_uniform_frame_indices(total_frames: int, sample_count: int) -> List[int]:
+    if total_frames <= 0:
+        return []
+    if sample_count <= 1 or total_frames == 1:
+        return [total_frames - 1]
+    sample_count = min(sample_count, total_frames)
+    if sample_count == total_frames:
+        return list(range(total_frames))
+    max_index = total_frames - 1
+    return [int(round((idx * max_index) / float(sample_count - 1))) for idx in range(sample_count)]
+
+
+def build_sampled_story_video(
+    *,
+    src: Path,
+    dst: Path,
+    max_frames: int,
+    output_fps: float,
+) -> dict:
+    import cv2
+
+    video = cv2.VideoCapture(src.as_posix())
+    if not video.isOpened():
+        raise RuntimeError(f"Could not open video for sampling: {src.as_posix()}")
+
+    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    source_fps = float(video.get(cv2.CAP_PROP_FPS) or 0.0)
+    indices = build_uniform_frame_indices(total_frames, max_frames)
+    sampled = []
+    for frame_index in indices:
+        video.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        success, frame = video.read()
+        if success and frame is not None:
+            sampled.append((frame_index, frame))
+    video.release()
+
+    if not sampled:
+        raise RuntimeError(f"Could not sample any frames from {src.as_posix()}")
+
+    frames = [frame for _, frame in sampled]
+    frame_height, frame_width = frames[0].shape[:2]
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    prepared_fps = max(float(output_fps), 8.0)
+    frame_repeat = max(int(round(prepared_fps / 2.0)), 1)
+    writer = cv2.VideoWriter(
+        dst.as_posix(),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        prepared_fps,
+        (frame_width, frame_height),
+    )
+    if not writer.isOpened():
+        raise RuntimeError(f"Could not open sampled-story writer for {dst.as_posix()}")
+
+    output_frames = []
+    for frame in frames:
+        output_frames.extend([frame] * frame_repeat)
+    for frame in output_frames:
+        if frame.shape[0] != frame_height or frame.shape[1] != frame_width:
+            frame = cv2.resize(frame, (frame_width, frame_height))
+        writer.write(frame)
+    writer.release()
+
+    return {
+        "mode": "sampled_story_video",
+        "source_total_frames": total_frames,
+        "source_fps": source_fps,
+        "selected_frame_indices": [int(frame_index) for frame_index, _ in sampled],
+        "selected_frame_count": len(sampled),
+        "prepared_video_frame_count": len(output_frames),
+        "prepared_video_fps": prepared_fps,
+        "frame_repeat": frame_repeat,
+        "expected_videobench_extracted_frames": len(sampled) + 1,
+    }
+
+
 def materialize_video(src: Path, dst: Path, link_mode: str) -> str:
     if dst.exists() or dst.is_symlink():
         dst.unlink()
@@ -393,6 +502,8 @@ def prepare_videobench_dataset(
     run_dir: Path,
     model_name: str,
     link_mode: str,
+    full_story_frame_cap: int = 0,
+    sampled_story_fps: float = 2.0,
 ) -> Tuple[Path, Path, Path, dict]:
     prepared_root = run_dir / "_videobench_input"
     model_dir = prepared_root / model_name
@@ -401,13 +512,32 @@ def prepare_videobench_dataset(
     prompt_map = {}
     manifest_rows = []
     link_counter: Counter[str] = Counter()
+    sampled_story_dir = prepared_root / "_sampled_story_inputs"
 
     for prompt_idx, record in enumerate(records):
         clip_src = Path(record["clip_path"])
-        ext = clip_src.suffix.lower()
+        prepared_src = clip_src
+        visual_prep = {"mode": "original"}
+
+        if (
+            full_story_frame_cap > 0
+            and len(records) == 1
+            and clip_src.suffix.lower() in VIDEO_FILE_SUFFIXES
+        ):
+            sampled_story_dir.mkdir(parents=True, exist_ok=True)
+            sampled_story_path = sampled_story_dir / f"story_sampled_{full_story_frame_cap:02d}.mp4"
+            visual_prep = build_sampled_story_video(
+                src=clip_src,
+                dst=sampled_story_path,
+                max_frames=full_story_frame_cap,
+                output_fps=sampled_story_fps,
+            )
+            prepared_src = sampled_story_path
+
+        ext = prepared_src.suffix.lower()
         target_name = f"{prompt_idx:04d}_window_{int(record['window_index']):03d}{ext}"
         target_path = model_dir / target_name
-        materialized_as = materialize_video(src=clip_src, dst=target_path, link_mode=link_mode)
+        materialized_as = materialize_video(src=prepared_src, dst=target_path, link_mode=link_mode)
         link_counter[materialized_as] += 1
 
         prompt_map[str(prompt_idx)] = str(record["prompt_text"])
@@ -419,8 +549,10 @@ def prepare_videobench_dataset(
                 "prompt_text": record["prompt_text"],
                 "beat": record["beat"],
                 "source_clip_path": clip_src.as_posix(),
+                "prepared_source_path": prepared_src.as_posix(),
                 "prepared_clip_path": target_path.as_posix(),
                 "materialized_as": materialized_as,
+                "visual_prep": visual_prep,
             }
         )
 
@@ -435,6 +567,8 @@ def prepare_videobench_dataset(
         "prompt_file": prompt_file_path.as_posix(),
         "clips": manifest_rows,
         "materialized_counts": dict(sorted(link_counter.items())),
+        "full_story_frame_cap": full_story_frame_cap,
+        "sampled_story_fps": sampled_story_fps,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     return prepared_root, model_dir, prompt_file_path, manifest
@@ -694,6 +828,21 @@ def main() -> None:
         help="Extra argument forwarded to Video-Bench (repeatable).",
     )
     parser.add_argument(
+        "--full_story_frame_cap",
+        type=int,
+        default=0,
+        help=(
+            "Cap the number of visual frames for single full-story inputs by building a short sampled clip. "
+            "0 keeps the original video unless auto-detected for small local VLM judges."
+        ),
+    )
+    parser.add_argument(
+        "--sampled_story_fps",
+        type=float,
+        default=8.0,
+        help="FPS used when writing the sampled full-story clip. Kept at >=8 so Video-Bench frame extraction and grid-view loading remain valid.",
+    )
+    parser.add_argument(
         "--dry_run",
         action="store_true",
         help="Prepare inputs and print commands only. Do not execute Video-Bench.",
@@ -708,6 +857,8 @@ def main() -> None:
 
     dimensions = parse_dimensions(args.dimensions)
     extra_args = parse_extra_args(args.extra_arg)
+    config_path = Path(args.config_path).expanduser().resolve() if args.config_path.strip() else None
+    full_story_frame_cap = infer_full_story_frame_cap(config_path, args.full_story_frame_cap)
 
     if args.videos_path.strip():
         story_run_override = Path(args.story_run_dir).expanduser().resolve() if args.story_run_dir.strip() else None
@@ -737,10 +888,11 @@ def main() -> None:
         run_dir=run_dir,
         model_name=model_name,
         link_mode=args.link_mode,
+        full_story_frame_cap=full_story_frame_cap,
+        sampled_story_fps=args.sampled_story_fps,
     )
 
     if not args.dry_run:
-        config_path = Path(args.config_path).expanduser().resolve() if args.config_path.strip() else None
         if config_path is None or not config_path.is_file():
             raise FileNotFoundError(
                 "Video-Bench config.json is required when not using --dry_run. "
@@ -764,6 +916,8 @@ def main() -> None:
     print(f"prompt_source={args.prompt_source}")
     print(f"source_prompt_counts={json.dumps(prompt_meta['source_prompt_counts'], sort_keys=True)}")
     print(f"clip_count={len(records)}")
+    print(f"full_story_frame_cap={full_story_frame_cap}")
+    print(f"sampled_story_fps={max(float(args.sampled_story_fps), 8.0):.2f}")
     print(f"dimensions={','.join(dimensions)}")
     print(f"videobench_bin={args.videobench_bin}")
     print(f"config_path={config_path.as_posix()}")
@@ -868,6 +1022,8 @@ def main() -> None:
         "dimensions": dimensions,
         "model_name": model_name,
         "link_mode": args.link_mode,
+        "full_story_frame_cap": full_story_frame_cap,
+        "sampled_story_fps": max(float(args.sampled_story_fps), 8.0),
         "videobench_bin": args.videobench_bin,
         "config_path": config_path.as_posix(),
         "results": results,

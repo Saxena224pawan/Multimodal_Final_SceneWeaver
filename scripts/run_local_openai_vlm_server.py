@@ -5,7 +5,7 @@ import io
 import json
 import time
 import uuid
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from PIL import Image
 from starlette.applications import Starlette
@@ -14,11 +14,39 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 import torch
 import uvicorn
-from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+from transformers import AutoConfig, AutoProcessor
+
+try:
+    from transformers import AutoModelForImageTextToText
+except Exception:  # pragma: no cover - depends on transformers version
+    AutoModelForImageTextToText = None
+
+try:
+    from transformers import AutoModelForVision2Seq
+except Exception:  # pragma: no cover - depends on transformers version
+    AutoModelForVision2Seq = None
+
+try:
+    from transformers import AutoModelForCausalLM
+except Exception:  # pragma: no cover - depends on transformers version
+    AutoModelForCausalLM = None
+
+try:
+    from transformers import LlavaForConditionalGeneration
+except Exception:  # pragma: no cover - depends on transformers version
+    LlavaForConditionalGeneration = None
+
+try:
+    from transformers import Qwen2_5_VLForConditionalGeneration
+except Exception:  # pragma: no cover - depends on transformers version
+    Qwen2_5_VLForConditionalGeneration = None
 
 MODEL = None
 PROCESSOR = None
 MODEL_NAME = None
+MODEL_TYPE = None
+MODEL_TEXT_MAX_POSITIONS = None
+MODEL_IMAGE_TOKEN_COUNT = None
 DEFAULT_MAX_NEW_TOKENS = 256
 
 
@@ -41,6 +69,11 @@ def convert_messages(messages: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any
             continue
         parts: List[Dict[str, Any]] = []
         for item in content:
+            if isinstance(item, str):
+                parts.append({'type': 'text', 'text': item})
+                continue
+            if not isinstance(item, dict):
+                continue
             item_type = item.get('type')
             if item_type == 'text':
                 parts.append({'type': 'text', 'text': item.get('text', '')})
@@ -53,14 +86,78 @@ def convert_messages(messages: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any
     return converted, images
 
 
+def estimate_llava_sequence_length(prompt_text: str, image_count: int) -> Optional[int]:
+    tokenizer = getattr(PROCESSOR, 'tokenizer', None)
+    if tokenizer is None:
+        return None
+    if MODEL_TEXT_MAX_POSITIONS is None or MODEL_IMAGE_TOKEN_COUNT is None:
+        return None
+    try:
+        tokenized = tokenizer(prompt_text, return_tensors='pt', add_special_tokens=True)
+    except Exception:
+        return None
+    input_ids = tokenized.get('input_ids')
+    if input_ids is None:
+        return None
+    text_len = int(input_ids.shape[1])
+    # The serialized prompt typically contains one placeholder token per image.
+    return text_len + image_count * max(MODEL_IMAGE_TOKEN_COUNT - 1, 0)
+
+
+def maybe_inject_scoring_reminder(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if MODEL_TYPE not in {'llava', 'smolvlm'}:
+        return messages
+
+    reminder = (
+        'Answer briefly. Put the score on the first line exactly as: Score: <integer 1-5>. '
+        'Then give at most two short sentences of justification.'
+    )
+    last_user_index = None
+    for index, message in enumerate(messages):
+        if message.get('role') == 'user':
+            last_user_index = index
+    if last_user_index is None:
+        return messages
+
+    patched: List[Dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        content = list(message.get('content', []))
+        if index == last_user_index:
+            already_present = any(
+                item.get('type') == 'text' and reminder in item.get('text', '')
+                for item in content
+                if isinstance(item, dict)
+            )
+            if not already_present:
+                content.append({'type': 'text', 'text': reminder})
+        patched.append({'role': message.get('role', 'user'), 'content': content})
+    return patched
+
+
 def generate_completion(payload: Dict[str, Any]) -> Dict[str, Any]:
-    global MODEL, PROCESSOR, MODEL_NAME
+    global MODEL, PROCESSOR, MODEL_NAME, MODEL_TYPE
     model_name = payload.get('model') or MODEL_NAME
     raw_messages = payload.get('messages') or []
     max_tokens = int(payload.get('max_tokens') or payload.get('max_completion_tokens') or DEFAULT_MAX_NEW_TOKENS)
 
     messages, images = convert_messages(raw_messages)
+    messages = maybe_inject_scoring_reminder(messages)
     prompt_text = PROCESSOR.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    if MODEL_TYPE == 'llava' and images:
+        estimated_seq_len = estimate_llava_sequence_length(prompt_text, len(images))
+        if estimated_seq_len is not None and MODEL_TEXT_MAX_POSITIONS is not None:
+            print(
+                f"LLaVA request: images={len(images)} estimated_sequence_length={estimated_seq_len} "
+                f"max_position_embeddings={MODEL_TEXT_MAX_POSITIONS}",
+                flush=True,
+            )
+            if estimated_seq_len > MODEL_TEXT_MAX_POSITIONS:
+                raise ValueError(
+                    "Refusing oversized LLaVA request: "
+                    f"{len(images)} images expand to an estimated sequence length of {estimated_seq_len}, "
+                    f"which exceeds max_position_embeddings={MODEL_TEXT_MAX_POSITIONS}. "
+                    "Reduce the number of frames or use grid images."
+                )
 
     processor_kwargs: Dict[str, Any] = {
         'text': [prompt_text],
@@ -118,16 +215,71 @@ async def chat_completions_endpoint(request: Request) -> JSONResponse:
         return JSONResponse({'error': {'message': str(exc), 'type': 'server_error'}}, status_code=500)
 
 
-def load_model(model_dir: str, served_model_name: str) -> None:
-    global MODEL, PROCESSOR, MODEL_NAME
-    MODEL_NAME = served_model_name
-    PROCESSOR = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    MODEL = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+def _candidate_model_loaders(model_type: str) -> List[Type]:
+    candidates: List[Optional[Type]] = []
+    if model_type == 'qwen2_5_vl' and Qwen2_5_VLForConditionalGeneration is not None:
+        candidates.append(Qwen2_5_VLForConditionalGeneration)
+    if model_type == 'llava' and LlavaForConditionalGeneration is not None:
+        candidates.append(LlavaForConditionalGeneration)
+    if AutoModelForImageTextToText is not None:
+        candidates.append(AutoModelForImageTextToText)
+    if AutoModelForVision2Seq is not None:
+        candidates.append(AutoModelForVision2Seq)
+    if AutoModelForCausalLM is not None:
+        candidates.append(AutoModelForCausalLM)
+
+    unique: List[Type] = []
+    seen = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        if candidate in seen:
+            continue
+        unique.append(candidate)
+        seen.add(candidate)
+    return unique
+
+
+def _load_with_class(model_cls: Type, model_dir: str):
+    return model_cls.from_pretrained(
         model_dir,
         torch_dtype=torch.float16,
         device_map='auto',
         trust_remote_code=True,
     )
+
+
+def load_model(model_dir: str, served_model_name: str) -> None:
+    global MODEL, PROCESSOR, MODEL_NAME, MODEL_TYPE, MODEL_TEXT_MAX_POSITIONS, MODEL_IMAGE_TOKEN_COUNT
+    MODEL_NAME = served_model_name
+    config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_type = getattr(config, 'model_type', '')
+    MODEL_TYPE = model_type
+    text_config = getattr(config, 'text_config', None)
+    vision_config = getattr(config, 'vision_config', None)
+    MODEL_TEXT_MAX_POSITIONS = getattr(text_config, 'max_position_embeddings', None)
+    image_size = getattr(vision_config, 'image_size', None)
+    patch_size = getattr(vision_config, 'patch_size', None)
+    if isinstance(image_size, int) and isinstance(patch_size, int) and patch_size > 0:
+        MODEL_IMAGE_TOKEN_COUNT = (image_size // patch_size) ** 2
+    else:
+        MODEL_IMAGE_TOKEN_COUNT = None
+    PROCESSOR = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+
+    errors: List[str] = []
+    for model_cls in _candidate_model_loaders(model_type):
+        try:
+            MODEL = _load_with_class(model_cls, model_dir)
+            break
+        except Exception as exc:  # pragma: no cover - hardware/model dependent
+            errors.append(f"{model_cls.__name__}: {exc}")
+    else:
+        details = "; ".join(errors) if errors else "no compatible model loader found"
+        raise RuntimeError(
+            f"Unable to load multimodal model from {model_dir} "
+            f"(model_type={model_type!r}): {details}"
+        )
+
     MODEL.eval()
 
 

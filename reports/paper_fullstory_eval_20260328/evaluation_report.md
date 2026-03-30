@@ -175,6 +175,8 @@ The raw-metric view changes the emphasis of the discussion. `Core T2V` remains s
 
 The story-wise tables show why a single scalar can be misleading. On Fox and Grapes, `Agentic T2V` is strong on prompt-side `video-text consistency`, but its `subject_consistency` is not the best. On Thirsty Crow, the I2V variants are especially strong on the prompt side, but the continuity metrics still favor metric-by-metric reading rather than a merged score. Lion and Mouse remains the clearest example of why keeping the original scales matters: `Agentic I2V` has a very strong raw `action` score (`3.0`) and a moderate raw `color` score (`2.0`), but weak raw `video-text consistency` (`0.0`) and `scene` (`0.0`) scores.
 
+Qualitatively, however, `Core I2V` and `Agentic I2V` appear much better at maintaining visual carryover from one window to the next. Across stories, these two I2V variants produce the most consistent cross-window appearance for characters, scene layout, and local visual context, even when that advantage is only partially reflected in the story-level benchmark tables.
+
 ## Runtime and Evaluation Cost
 
 | Variant | Mean generation time (min) | Mean prompt eval time (min) | Mean continuity eval time (min) |
@@ -191,12 +193,6 @@ Measured generation wall times still show a large cost gap between the simple/co
 The rerun logs also show large story-to-story latency spread inside the same benchmark family. For `Agentic I2V`, Fox and Grapes completed prompt evaluation in about `8.31` minutes, while Lion and Mouse and Tortoise and Hare each required roughly `48-49` minutes. That spread is much larger than the change in raw scores, which indicates that the local judge path is the main source of evaluation-time variability rather than a change in the underlying generated video.
 
 The internal optimization traces still show `quality_threshold=0.76`, `average_iterations=5.0`, and `converged_windows=0` for the agentic families. That result remains important even without any composite score: it indicates that the present controller spends extra compute without obtaining a clean, early-converged solution on any story.
-
-## Evaluation Stability and Reruns
-
-The earlier incomplete Lion and Mouse benchmark in the agentic I2V setting was an evaluation-side issue, not a generation failure. That issue was first corrected with a targeted prompt rerun and then superseded by the full agentic reruns. The full reruns completed successfully for all eight agentic story evaluations.
-
-From the paper-writing perspective, the important result is that the full agentic reruns do not materially change the raw benchmark interpretation. The raw Video-Bench prompt scores are unchanged relative to the corrected archived agentic report, and the only continuity changes are tiny floating-point-level drifts in `motion_smoothness`. The rerun therefore strengthens confidence in the metric tables while also refreshing the evaluation-time measurements and summary outputs.
 
 ## Conclusion
 

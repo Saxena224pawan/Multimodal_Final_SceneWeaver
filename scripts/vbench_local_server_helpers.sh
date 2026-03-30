@@ -61,6 +61,7 @@ maybe_start_local_videobench_server() {
   [ -f "${config_path}" ] || return 0
 
   local base_url host port model_name api_key
+  local local_model_id local_model_dir local_snapshot_root local_download_model local_extra_pips
   base_url="$(read_config_value "${config_path}" GPT4o_BASE_URL)"
   [ -n "${base_url}" ] || base_url="$(read_config_value "${config_path}" OPENAI_BASE_URL)"
   [ -n "${base_url}" ] || return 0
@@ -102,11 +103,25 @@ PYPORT
   api_key="$(read_config_value "${config_path}" GPT4o_API_KEY)"
   [ -n "${api_key}" ] || api_key="$(read_config_value "${config_path}" OPENAI_API_KEY)"
   [ -n "${api_key}" ] || api_key="${LOCAL_SERVER_API_KEY:-local-videobench}"
+  local_model_id="$(read_config_value "${config_path}" LOCAL_SERVER_MODEL_ID)"
+  local_model_dir="$(read_config_value "${config_path}" LOCAL_SERVER_MODEL_DIR)"
+  local_snapshot_root="$(read_config_value "${config_path}" LOCAL_SERVER_HF_CACHE_SNAPSHOT_ROOT)"
+  local_download_model="$(read_config_value "${config_path}" LOCAL_SERVER_DOWNLOAD_MODEL)"
+  local_extra_pips="$(read_config_value "${config_path}" LOCAL_SERVER_EXTRA_PIP_PACKAGES)"
 
   mkdir -p "${WINDOW_REPORT_ROOT}"
   local server_log="${WINDOW_REPORT_ROOT}/local_videobench_server_${RUN_NAME_BASE}.log"
   echo "Starting local Video-Bench server at ${base_url}"
-  HOST="${host}" PORT="${port}" API_KEY="${api_key}" SERVED_MODEL_NAME="${model_name:-Qwen2.5-VL-7B-Instruct}" bash "${VIDEOBENCH_LOCAL_SERVER_SCRIPT}" >"${server_log}" 2>&1 &
+  HOST="${host}" \
+  PORT="${port}" \
+  API_KEY="${api_key}" \
+  SERVED_MODEL_NAME="${model_name:-Qwen2.5-VL-7B-Instruct}" \
+  MODEL_ID="${local_model_id}" \
+  MODEL_DIR="${local_model_dir}" \
+  HF_CACHE_SNAPSHOT_ROOT="${local_snapshot_root}" \
+  DOWNLOAD_MODEL="${local_download_model:-1}" \
+  SERVER_EXTRA_PIP_PACKAGES="${local_extra_pips}" \
+  bash "${VIDEOBENCH_LOCAL_SERVER_SCRIPT}" >"${server_log}" 2>&1 &
   local_videobench_server_pid=$!
   trap stop_local_videobench_server EXIT
 
